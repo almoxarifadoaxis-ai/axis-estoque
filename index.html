@@ -5401,100 +5401,127 @@ function registrarEntregaEPI(){
 
 function renderFichasEPI(){
   const q=norm(document.getElementById('epi-ficha-search').value);
-  let fichas=DBX.getEPIFichas().filter(f=>!q||norm(f.employee).includes(q)||f.items.some(it=>norm(it.name).includes(q)||norm(it.code).includes(q)));
-  if(!fichas.length){document.getElementById('epi-fichas-table').innerHTML='<div class="empty-state"><div class="ico">📋</div>Nenhuma ficha de entrega registrada.</div>';return;}
-  document.getElementById('epi-fichas-table').innerHTML=fichas.map(f=>`
-    <div class="panel" style="margin-bottom:12px;padding:14px">
+  const all=DBX.getEPIFichas();
+  // Unifica por funcionário: uma ficha só (card) por pessoa, com a lista
+  // completa de tudo que já foi entregue a ela, em vez de um card novo
+  // a cada entrega.
+  const groups={};
+  all.forEach(f=>{
+    const key=norm(f.employee);
+    if(!groups[key])groups[key]={employee:f.employee,role:f.role,department:f.department,_lastDate:''};
+    if((f.date||'')>=(groups[key]._lastDate||'')){
+      groups[key]._lastDate=f.date||'';
+      groups[key].employee=f.employee;
+      groups[key].role=f.role;
+      groups[key].department=f.department;
+    }
+  });
+  let list=Object.values(groups);
+  if(q){
+    list=list.filter(g=>norm(g.employee).includes(q)||all.some(f=>norm(f.employee)===norm(g.employee)&&(f.items||[]).some(it=>norm(it.name).includes(q)||norm(it.code).includes(q))));
+  }
+  list.sort((a,b)=>norm(a.employee).localeCompare(norm(b.employee)));
+  if(!list.length){document.getElementById('epi-fichas-table').innerHTML='<div class="empty-state"><div class="ico">📋</div>Nenhuma ficha de entrega registrada.</div>';return;}
+  document.getElementById('epi-fichas-table').innerHTML=list.map(g=>{
+    const rows=[];
+    all.filter(f=>norm(f.employee)===norm(g.employee)).forEach(f=>{
+      (f.items||[]).forEach((it,idx)=>{
+        rows.push({...it,date:f.date,fichaId:f.id,itemIndex:idx});
+      });
+    });
+    rows.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    return `<div class="panel" style="margin-bottom:12px;padding:14px">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <div>
-          <strong style="font-size:15px;color:#1F3864">👤 ${f.employee}</strong>
-          <span style="margin-left:10px;font-size:12px;color:#666">${f.role||''} ${f.department?'• '+f.department:''} ${f.project?'• Proj: '+f.project:''}</span>
+          <strong style="font-size:15px;color:#1F3864">👤 ${g.employee}</strong>
+          <span style="margin-left:10px;font-size:12px;color:#666">${g.role||''} ${g.department?'• '+g.department:''}</span>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-          <div style="font-size:12px;color:#888">📅 ${fmtDate(f.date)} ${f.responsible?'• Resp: '+f.responsible:''}</div>
-          <div style="white-space:nowrap">
-            <button class="btn btn-sm btn-outline" onclick="editarFichaEPI('${f.id}')" title="Editar">✏️ Editar</button>
-            <button class="btn btn-sm btn-danger" onclick="excluirFichaEPI('${f.id}')" title="Excluir">🗑 Excluir</button>
-          </div>
+          <div style="font-size:12px;color:#888">${rows.length} item(ns) entregue(s) no total</div>
+          <button class="btn btn-sm btn-outline" onclick="editarFuncionarioFicha('${g.employee.replace(/'/g,"\\'")}')" title="Editar">✏️ Editar</button>
         </div>
       </div>
       <table style="width:100%;border-collapse:collapse;font-size:12px">
-        <thead><tr style="background:#EEE"><th style="padding:5px 8px;text-align:left">EPI</th><th>CA Nº</th><th>Qtd</th><th>Validade EPI</th></tr></thead>
-        <tbody>${(f.items||[]).map(it=>`<tr style="border-bottom:1px solid #F0F0F0"><td style="padding:5px 8px">${it.name} <span style="color:#888;font-size:11px">(${it.code})</span></td><td style="text-align:center">${it.ca||'—'}</td><td style="text-align:center;font-weight:700">${it.qty}</td><td style="text-align:center;color:${it.validity&&new Date(it.validity)<new Date()?'#C00000':'#375623'}">${it.validity?fmtDate(it.validity):'—'}</td></tr>`).join('')}</tbody>
+        <thead><tr style="background:#EEE"><th style="padding:5px 8px;text-align:left">EPI</th><th>CA Nº</th><th>Qtd</th><th>Data Entrega</th><th>Validade EPI</th><th></th></tr></thead>
+        <tbody>${rows.map(it=>`<tr style="border-bottom:1px solid #F0F0F0">
+          <td style="padding:5px 8px">${it.name} <span style="color:#888;font-size:11px">(${it.code})</span></td>
+          <td style="text-align:center">${it.ca||'—'}</td>
+          <td style="text-align:center;font-weight:700">${it.qty}</td>
+          <td style="text-align:center">${fmtDate(it.date)}</td>
+          <td style="text-align:center;color:${it.validity&&new Date(it.validity)<new Date()?'#C00000':'#375623'}">${it.validity?fmtDate(it.validity):'—'}</td>
+          <td style="text-align:center"><button class="btn btn-sm btn-danger" onclick="excluirItemFichaEPI('${it.fichaId}',${it.itemIndex})" title="Excluir esta entrega">🗑</button></td>
+        </tr>`).join('')}</tbody>
       </table>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
-function editarFichaEPI(id){
-  const f=DBX.getEPIFichas().find(x=>x.id===id);
-  if(!f)return;
-  showGenModal(`<div class="modal" style="max-width:560px">
-    <h3>✏️ Editar Ficha de Entrega</h3>
-    <p style="font-size:12px;color:#888;margin:-4px 0 12px">Os itens entregues (EPI, quantidade, validade) não são editáveis aqui — para corrigir a quantidade ou o item entregue, exclua a ficha e registre a entrega novamente.</p>
+function editarFuncionarioFicha(employeeName){
+  const fichas=DBX.getEPIFichas().filter(f=>norm(f.employee)===norm(employeeName));
+  if(!fichas.length)return;
+  const last=fichas.reduce((a,b)=>((b.date||'')>=(a?.date||'')?b:a),fichas[0]);
+  showGenModal(`<div class="modal" style="max-width:520px">
+    <h3>✏️ Editar Dados do Funcionário</h3>
+    <p style="font-size:12px;color:#888;margin:-4px 0 12px">Atualiza o nome/cargo/departamento em todas as entregas já registradas para este funcionário.</p>
     <div class="form-grid cols2">
-      <div class="fld"><label>Funcionário <span>*</span></label><input id="ef-employee" value="${String(f.employee||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fld"><label>Cargo</label><input id="ef-role" value="${String(f.role||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fld"><label>Departamento</label><input id="ef-department" value="${String(f.department||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fld"><label>Projeto</label><input id="ef-project" value="${String(f.project||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fld"><label>Responsável</label><input id="ef-responsible" value="${String(f.responsible||'').replace(/"/g,'&quot;')}"></div>
-      <div class="fld"><label>Data <span>*</span></label><input id="ef-date" type="date" value="${f.date||''}"></div>
+      <div class="fld"><label>Nome <span>*</span></label><input id="ef2-nome" value="${String(employeeName).replace(/"/g,'&quot;')}"></div>
+      <div class="fld"><label>Cargo</label><input id="ef2-cargo" value="${String(last.role||'').replace(/"/g,'&quot;')}"></div>
+      <div class="fld"><label>Departamento</label><input id="ef2-depto" value="${String(last.department||'').replace(/"/g,'&quot;')}"></div>
     </div>
     <div class="btn-group mt16" style="justify-content:flex-end">
       <button class="btn btn-outline" onclick="closeGenModal()">Cancelar</button>
-      <button class="btn btn-primary" onclick="salvarEdicaoFichaEPI('${id}')">💾 Salvar</button>
+      <button class="btn btn-primary" onclick="salvarEdicaoFuncionarioFicha('${employeeName.replace(/'/g,"\\'")}')">💾 Salvar</button>
     </div>
   </div>`);
 }
-function salvarEdicaoFichaEPI(id){
-  const employee=document.getElementById('ef-employee').value.trim();
-  const date=document.getElementById('ef-date').value;
-  if(!employee){toast('Informe o nome do funcionário!',false);return;}
-  if(!date){toast('Informe a data!',false);return;}
-  const fichas=DBX.getEPIFichas();
-  const i=fichas.findIndex(x=>x.id===id);
-  if(i<0){closeGenModal();return;}
-  fichas[i]={...fichas[i],
-    employee,
-    date,
-    role:document.getElementById('ef-role').value.trim(),
-    department:document.getElementById('ef-department').value.trim(),
-    project:document.getElementById('ef-project').value.trim(),
-    responsible:document.getElementById('ef-responsible').value.trim()
-  };
+function salvarEdicaoFuncionarioFicha(oldName){
+  const nome=document.getElementById('ef2-nome').value.trim();
+  const cargo=document.getElementById('ef2-cargo').value.trim();
+  const depto=document.getElementById('ef2-depto').value.trim();
+  if(!nome){toast('Informe o nome!',false);return;}
+  const fichas=DBX.getEPIFichas().map(f=>norm(f.employee)===norm(oldName)?{...f,employee:nome,role:cargo,department:depto}:f);
   DBX.saveEPIFichas(fichas);
+  // Mantém consistência no cadastro de funcionário e nas movimentações (relatórios usam collaborator)
+  const funcs=DBX.getFuncionarios();
+  const fi=funcs.findIndex(x=>norm(x.nome)===norm(oldName));
+  if(fi>=0){funcs[fi]={...funcs[fi],nome,cargo,departamento:depto};DBX.saveFuncionarios(funcs);}
+  const movs=DBX.getEPIMovs().map(m=>norm(m.collaborator)===norm(oldName)?{...m,collaborator:nome,department:depto}:m);
+  DBX.saveEPIMovs(movs);
   closeGenModal();
   renderFichasEPI();
-  toast('✅ Ficha atualizada!');
+  try{refreshDatalists();}catch(e){}
+  toast('✅ Dados atualizados em todas as entregas!');
 }
-function excluirFichaEPI(id){
-  const f=DBX.getEPIFichas().find(x=>x.id===id);
-  if(!f)return;
-  // Tenta localizar as movimentações de Saída correspondentes a esta ficha
-  // (mesmo funcionário, mesma data, mesmo item/quantidade) para reverter a
-  // baixa de estoque junto com a exclusão da ficha — evita que uma ficha
-  // duplicada/errada deixe o estoque descontado indevidamente.
-  const todosMovs=DBX.getEPIMovs();
-  const usados=new Set();
-  const movsRelacionados=[];
-  (f.items||[]).forEach(it=>{
-    const m=todosMovs.find(mv=>!usados.has(mv.id)&&mv.type==='Saída'&&norm(mv.collaborator)===norm(f.employee)&&mv.date===f.date&&norm(mv.productCode)===norm(it.code)&&Number(mv.quantity)===Number(it.qty));
-    if(m){ usados.add(m.id); movsRelacionados.push(m); }
-  });
-  const itensTxt=(f.items||[]).map(it=>'• '+it.name+' — '+fmtNum(it.qty)).join('\n');
-  const avisoEstoque=movsRelacionados.length
-    ? '\n\nAs '+movsRelacionados.length+' baixa(s) de estoque correspondente(s) também serão desfeitas (o saldo volta).'
-    : '\n\nNenhuma movimentação de estoque correspondente foi encontrada automaticamente — apenas a ficha será removida.';
-  confirm2('Excluir a ficha de entrega de "'+f.employee+'" ('+fmtDate(f.date)+')?\n\n'+itensTxt+avisoEstoque,()=>{
-    DBTRASH.add('epi_ficha',f,'Ficha EPI — '+f.employee+' ('+fmtDate(f.date)+')','');
-    DBX.saveEPIFichas(DBX.getEPIFichas().filter(x=>x.id!==id));
-    if(movsRelacionados.length){
-      movsRelacionados.forEach(m=>DBTRASH.add('epi_mov',m,m.productName+' — Saída '+fmtNum(m.quantity)+' ('+f.employee+')',m.productCode));
-      const idsRel=new Set(movsRelacionados.map(m=>m.id));
-      DBX.saveEPIMovs(DBX.getEPIMovs().filter(m=>!idsRel.has(m.id)));
+function excluirItemFichaEPI(fichaId,itemIndex){
+  const fichas=DBX.getEPIFichas();
+  const fi=fichas.findIndex(x=>x.id===fichaId);
+  if(fi<0)return;
+  const f=fichas[fi];
+  const it=(f.items||[])[itemIndex];
+  if(!it)return;
+  confirm2('Excluir a entrega de "'+it.name+'" ('+fmtNum(it.qty)+') para '+f.employee+' em '+fmtDate(f.date)+'?\n\nO saldo em estoque correspondente será restaurado.',()=>{
+    // reverte a movimentação de estoque (Saída) correspondente, se encontrada
+    const movs=DBX.getEPIMovs();
+    const mi=movs.findIndex(mv=>mv.type==='Saída'&&norm(mv.collaborator)===norm(f.employee)&&mv.date===f.date&&norm(mv.productCode)===norm(it.code)&&Number(mv.quantity)===Number(it.qty));
+    if(mi>=0){
+      const mov=movs[mi];
+      DBTRASH.add('epi_mov',mov,mov.productName+' — Saída '+fmtNum(mov.quantity)+' ('+f.employee+')',mov.productCode);
+      movs.splice(mi,1);
+      DBX.saveEPIMovs(movs);
     }
-    toast('Ficha excluída'+(movsRelacionados.length?' e estoque restaurado!':'!'));
+    const novosItems=(f.items||[]).filter((_,i)=>i!==itemIndex);
+    if(novosItems.length){
+      const fichasAtualizadas=DBX.getEPIFichas();
+      const idx=fichasAtualizadas.findIndex(x=>x.id===fichaId);
+      if(idx>=0){fichasAtualizadas[idx]={...fichasAtualizadas[idx],items:novosItems};DBX.saveEPIFichas(fichasAtualizadas);}
+    } else {
+      // era o último item da ficha — remove a ficha inteira (vai para a Lixeira)
+      DBTRASH.add('epi_ficha',f,'Ficha EPI — '+f.employee+' ('+fmtDate(f.date)+')','');
+      DBX.saveEPIFichas(DBX.getEPIFichas().filter(x=>x.id!==fichaId));
+    }
     renderFichasEPI();
     renderEPIKPIs();
     updateLixeiraBadge();
+    toast('Entrega removida e estoque restaurado!');
   });
 }
 
