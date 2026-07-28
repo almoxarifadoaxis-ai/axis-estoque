@@ -873,6 +873,7 @@ function exportCatCSV(){
 <datalist id="dl-projetos"></datalist>
 <datalist id="dl-veiculos"></datalist>
 <datalist id="dl-servicos"></datalist>
+<datalist id="dl-funcionarios"></datalist>
 
 <!-- SIDEBAR -->
 <div id="sidebar">
@@ -1406,7 +1407,7 @@ function exportCatCSV(){
             <div>⚠️ <strong>Entrega Sem Devolução</strong> — O EPI é entregue definitivamente ao funcionário e <strong>não é esperada devolução</strong>. Gera ficha automática. Conforme NR-6, registros devem ser mantidos por 20 anos.</div>
           </div>
           <div class="form-grid cols3">
-            <div class="fld"><label>Funcionário <span>*</span></label><input id="epi-func" placeholder="Nome completo"></div>
+            <div class="fld"><label>Funcionário <span>*</span></label><input id="epi-func" list="dl-funcionarios" placeholder="Nome completo" onchange="preencherFuncEPI()"></div>
             <div class="fld"><label>Cargo</label><input id="epi-cargo" placeholder="Cargo do funcionário"></div>
             <div class="fld"><label>Departamento</label><input id="epi-depto" placeholder="Setor/Departamento"></div>
             <div class="fld"><label>Projeto</label><input id="epi-proj" placeholder="Projeto (opcional)"></div>
@@ -1432,6 +1433,7 @@ function exportCatCSV(){
         <div class="tab-content" id="epi-tab-fichas">
           <div class="search-bar">
             <input id="epi-ficha-search" placeholder="🔍 Buscar por funcionário ou EPI..." oninput="renderFichasEPI()">
+            <button class="btn btn-primary btn-sm" onclick="openFuncModal()">+ Cadastrar Funcionário</button>
           </div>
           <div id="epi-fichas-table"></div>
         </div>
@@ -2153,6 +2155,7 @@ const SUPA_MAP = {
   ax_servicos_movs:       {table:'servicos_movimentacoes'},
   ax_projetos_financeiro: {table:'projetos_financeiro'},
   ax_epi_fichas:          {table:'epi_fichas'},
+  ax_funcionarios:        {table:'funcionarios'},
 };
 // Tabelas de cadastro (permitem edição do mesmo registro depois de criado):
 // aqui fazemos upsert por app_id, cobrindo tanto itens novos quanto edições.
@@ -2160,7 +2163,7 @@ const SUPA_MAP = {
 // movimentação), onde só enviamos os itens novos.
 const SUPA_UNIQUE_TABLES = new Set(['produtos','perfis_aluminio','ferramentas','epi',
   'material_escritorio','material_limpeza','fornecedores','projetos','veiculos',
-  'veiculos_uso','compras','lixeira','catalogo','servicos','projetos_financeiro','epi_fichas']);
+  'veiculos_uso','compras','lixeira','catalogo','servicos','projetos_financeiro','epi_fichas','funcionarios']);
 
 let _supaSyncedIds = {}; // table -> Set de app_id já conhecidos no Supabase
 const _origLSSetItem = localStorage.setItem.bind(localStorage);
@@ -2789,6 +2792,10 @@ function refreshDatalists(){
   try{
     const dlv=document.getElementById('dl-veiculos');
     if(dlv)dlv.innerHTML=DBVEICCAD.get().map(v=>'<option value="'+String(v.nome).replace(/"/g,'&quot;')+'">').join('');
+  }catch(e){}
+  try{
+    const dlfunc=document.getElementById('dl-funcionarios');
+    if(dlfunc)dlfunc.innerHTML=DBX.getFuncionarios().map(f=>'<option value="'+String(f.nome).replace(/"/g,'&quot;')+'">').join('');
   }catch(e){}
   refreshPedidoSelects();
   try{
@@ -4786,7 +4793,7 @@ function salvarConfig(){
 // ═══════════════════════════════════════════════════════════════════════════
 // LIXEIRA - RENDER & RESTORE
 // ═══════════════════════════════════════════════════════════════════════════
-const MODULE_LABELS={produto:'📦 Produto',epi:'🦺 EPI',ferr:'🔧 Ferramenta',esc:'📋 Escritório',limp:'🧹 Limpeza',perfil:'📐 Perfil de Alumínio',movimentacao:'🔁 Movimentação',veiculo:'🚗 Uso de Veículo',epi_ficha:'📋 Ficha de EPI',epi_mov:'🦺 Mov. de EPI'};
+const MODULE_LABELS={produto:'📦 Produto',epi:'🦺 EPI',ferr:'🔧 Ferramenta',esc:'📋 Escritório',limp:'🧹 Limpeza',perfil:'📐 Perfil de Alumínio',movimentacao:'🔁 Movimentação',veiculo:'🚗 Uso de Veículo',epi_ficha:'📋 Ficha de EPI',epi_mov:'🦺 Mov. de EPI',funcionario:'👤 Funcionário'};
 function renderLixeira(){
   updateLixeiraBadge();
   const items=DBTRASH.get();
@@ -4844,6 +4851,10 @@ function restaurarItem(id){
     } else if(item.module==='epi_mov'){
       const movs=DBX.getEPIMovs();movs.unshift(item.data);DBX.saveEPIMovs(movs);
       renderEPIKPIs();
+    } else if(item.module==='funcionario'){
+      if(DBX.getFuncionarios().some(f=>norm(f.nome)===norm(item.data.nome))){toast('Já existe um funcionário com esse nome.',false);return;}
+      const funcs=DBX.getFuncionarios();funcs.push(item.data);DBX.saveFuncionarios(funcs);
+      try{refreshDatalists();}catch(e){}
     }
     DBTRASH.remove(id);
     renderLixeira();updateBadges();
@@ -4975,6 +4986,11 @@ const DBX = {
   getEPIFichas(){ return JSON.parse(localStorage.getItem('ax_epi_fichas')||'[]'); },
   saveEPIFichas(d){ localStorage.setItem('ax_epi_fichas',JSON.stringify(d)); },
   addEPIFicha(d){ const a=this.getEPIFichas(); a.unshift({...d,id:uid(),at:new Date().toISOString()}); this.saveEPIFichas(a); },
+
+  // Cadastro de Funcionários (usado para padronizar nome/cargo/departamento nas Fichas de EPI)
+  getFuncionarios(){ return JSON.parse(localStorage.getItem('ax_funcionarios')||'[]'); },
+  saveFuncionarios(d){ localStorage.setItem('ax_funcionarios',JSON.stringify(d)); },
+  getFuncionario(id){ return this.getFuncionarios().find(f=>f.id===id); },
 
   // Cadastro Ferramentas
   getFerrCad(){ return JSON.parse(localStorage.getItem('ax_ferr_cad')||'[]'); },
@@ -5143,6 +5159,83 @@ function salvarEPICad(editCode){
   }
   else{if(DBX.getEPIProd(code)){toast('Código já existe!',false);return;}cad.push({...data,id:uid(),createdAt:today()});DBX.saveEPICad(cad);if(qtdInicial>0){DBX.addEPIMov({type:'Entrada',productCode:code,productName:name,quantity:qtdInicial,unitPrice:data.unitPrice,date:today(),nfNumber:'Estoque Inicial',supplier:'Saldo Inicial'});}}
   closeGenModal();renderEPIEstoque();renderEPIKPIs();toast('EPI salvo!');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Cadastro de Funcionários (para padronizar Fichas de EPI e evitar duplicidade)
+// ═══════════════════════════════════════════════════════════════════════════
+function openFuncModal(id){
+  const f=id?DBX.getFuncionario(id):null;
+  const html=`<div class="modal" style="max-width:640px">
+    <h2>👤 ${f?'Editar':'Cadastrar'} Funcionário</h2>
+    <div class="form-grid cols3">
+      <div class="fld"><label>Nome Completo <span>*</span></label><input id="func-nome" value="${f?.nome||''}" placeholder="Nome completo"></div>
+      <div class="fld"><label>Cargo</label><input id="func-cargo" value="${f?.cargo||''}" placeholder="Cargo do funcionário"></div>
+      <div class="fld"><label>Departamento</label><input id="func-depto" value="${f?.departamento||''}" placeholder="Setor/Departamento"></div>
+    </div>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="salvarFuncionario('${id||''}')">💾 Salvar</button>
+      <button class="btn btn-outline" onclick="closeGenModal()">Cancelar</button>
+    </div>
+    <hr style="margin:18px 0;border:none;border-top:1px solid #e5e5e5">
+    <strong style="color:#375623">Funcionários Cadastrados</strong>
+    <div id="func-list-wrap" style="margin-top:10px;max-height:260px;overflow:auto"></div>
+  </div>`;
+  showGenModal(html);
+  renderFuncionariosList();
+}
+function renderFuncionariosList(){
+  const wrap=document.getElementById('func-list-wrap');
+  if(!wrap)return;
+  const list=DBX.getFuncionarios().sort((a,b)=>norm(a.nome).localeCompare(norm(b.nome)));
+  if(!list.length){wrap.innerHTML='<div class="empty-state" style="padding:12px">Nenhum funcionário cadastrado ainda.</div>';return;}
+  wrap.innerHTML=`<table class="mod-table"><thead><tr><th>Nome</th><th>Cargo</th><th>Departamento</th><th></th></tr></thead><tbody>
+    ${list.map(f=>`<tr>
+      <td><b>${f.nome}</b></td><td>${f.cargo||'—'}</td><td>${f.departamento||'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-outline" onclick="openFuncModal('${f.id}')" title="Editar">✏️</button>
+        <button class="btn btn-sm btn-danger" onclick="excluirFuncionario('${f.id}')" title="Excluir">🗑</button>
+      </td>
+    </tr>`).join('')}
+  </tbody></table>`;
+}
+function salvarFuncionario(editId){
+  const nome=document.getElementById('func-nome').value.trim();
+  if(!nome){toast('Informe o nome do funcionário!',false);return;}
+  const cargo=document.getElementById('func-cargo').value.trim();
+  const departamento=document.getElementById('func-depto').value.trim();
+  const list=DBX.getFuncionarios();
+  if(editId){
+    DBX.saveFuncionarios(list.map(f=>f.id===editId?{...f,nome,cargo,departamento}:f));
+    toast('Funcionário atualizado!');
+  } else {
+    if(list.some(f=>norm(f.nome)===norm(nome))){toast('Já existe um funcionário cadastrado com esse nome!',false);return;}
+    list.push({id:uid(),nome,cargo,departamento,createdAt:new Date().toISOString()});
+    DBX.saveFuncionarios(list);
+    toast('Funcionário cadastrado!');
+  }
+  try{refreshDatalists();}catch(e){}
+  openFuncModal();
+}
+function excluirFuncionario(id){
+  const f=DBX.getFuncionario(id);
+  if(!f)return;
+  confirm2('Excluir o funcionário "'+f.nome+'"? Isso não apaga fichas de EPI já entregues, só o cadastro dele.',()=>{
+    DBTRASH.add('funcionario',f,f.nome,'');
+    DBX.saveFuncionarios(DBX.getFuncionarios().filter(x=>x.id!==id));
+    try{refreshDatalists();}catch(e){}
+    openFuncModal();
+    toast('Funcionário excluído.');
+  });
+}
+function preencherFuncEPI(){
+  const nome=document.getElementById('epi-func')?.value.trim();
+  if(!nome)return;
+  const f=DBX.getFuncionarios().find(x=>norm(x.nome)===norm(nome));
+  if(f){
+    if(f.cargo)document.getElementById('epi-cargo').value=f.cargo;
+    if(f.departamento)document.getElementById('epi-depto').value=f.departamento;
+  }
 }
 
 // Compra EPI
