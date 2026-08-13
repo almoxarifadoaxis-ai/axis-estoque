@@ -4509,6 +4509,9 @@ function exportarRelatorioProjetoCSV(){
   const total=list.reduce((s,it)=>s+it.totalValue,0);
   rows.push([]);rows.push(['TOTAL GERAL','','','','','','','',total,'']);
   downloadCSV(rows,'relatorio_saida_projeto_'+today()+'.csv');
+toast('CSV do relatório gerado!');
+}
+
   // ═══════════════════════════════════════════════════════════════════════════
 // CONSULTA DE NOTAS FISCAIS — agrupa o Histórico de Custos (permanente, nunca
 // editado/apagado) por número de NF, juntando os itens de todos os módulos
@@ -4650,9 +4653,6 @@ function exportarNotasFiscaisCSV(){
   rows.push([]);rows.push(['TOTAL GERAL','','','','','',total,'']);
   downloadCSV(rows,'notas_fiscais_'+today()+'.csv');
   toast('CSV gerado!');
-}
-
-toast('CSV do relatório gerado!');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
