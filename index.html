@@ -895,6 +895,7 @@ function exportCatCSV(){
     <a onclick="nav('saida')"><span class="ico">⬆️</span><span>Saída</span></a>
     <a onclick="nav('movimentacoes')"><span class="ico">📋</span><span>Histórico</span></a>
     <a onclick="nav('custos')"><span class="ico">💰</span><span>Histórico de Custos</span></a>
+    <a onclick="nav('nfconsulta')"><span class="ico">🧾</span><span>Notas Fiscais</span></a>
     <a onclick="nav('compras')" id="compras-nav-link"><span class="ico">🛒</span><span>Solicitação de Compras <span id="compras-badge" style="display:none;background:#C00;color:#fff;border-radius:9px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></span></a>
     <div class="sep">Visão Geral</div>
     <a onclick="nav('estoque')"><span class="ico">📊</span><span>Estoque</span></a>
@@ -1121,7 +1122,30 @@ function exportCatCSV(){
       </div>
     </div>
 
-    <!-- ══ SOLICITAÇÃO DE COMPRAS ══════════════════════════════════════ -->
+    <!-- ══ CONSULTA DE NOTAS FISCAIS ═══════════════════════════════════ -->
+    <div id="sec-nfconsulta" class="section">
+      <div class="panel">
+        <div class="panel-header"><h3>🧾 Consulta de Notas Fiscais</h3></div>
+        <p style="font-size:12px;color:#777;margin:-8px 0 12px">Busca em todos os módulos (Estoque Geral, EPI, Ferramentas, Material de Escritório, Material de Limpeza e Perfis de Alumínio) por número de NF, fornecedor, CNPJ ou projeto, agrupando os itens de cada nota lançada. Deixe a busca em branco para ver todas as notas.</p>
+        <div class="search-bar">
+          <input id="nfc-search" placeholder="🔍 Ex: 12345, fornecedor XPTO, CNPJ, projeto..." onkeydown="if(event.key==='Enter'){event.preventDefault();renderNotasFiscais();}">
+          <button class="btn btn-primary" onclick="renderNotasFiscais()">Buscar</button>
+        </div>
+        <div class="search-bar">
+          <input id="nfc-date-from" type="date" title="De">
+          <input id="nfc-date-to" type="date" title="Até">
+          <button class="btn btn-sm btn-outline" onclick="renderNotasFiscais()">Aplicar Período</button>
+        </div>
+        <div id="nfc-summary" style="margin:10px 0"></div>
+        <div class="btn-group" style="margin-bottom:12px">
+          <button class="btn btn-success" onclick="gerarNotasFiscaisPDF()">📄 Gerar PDF (lista)</button>
+          <button class="btn btn-outline" onclick="exportarNotasFiscaisCSV()">⬇ Exportar CSV</button>
+        </div>
+        <div class="tbl-wrap" id="nfc-table"></div>
+      </div>
+    </div>
+
+    <!-- ══ SOLICITAÇÃO DE COMPRAS ═══════════════════════════════════════ -->
     <div id="sec-compras" class="section">
       <div class="panel">
         <div class="panel-header"><h3>🛒 Solicitação de Compras</h3></div>
@@ -2768,7 +2792,7 @@ const PAGE_TITLES={
   movimentacoes:'Histórico de Movimentações',custos:'💰 Histórico de Custos',estoque:'Posição de Estoque',
   alertas:'Alertas de Estoque',catalogo:'📚 Catálogo de Componentes',config:'Configurações',lixeira:'🗑️ Lixeira',
   compras:'🛒 Solicitação de Compras',relprojeto:'📁 Saída por Projeto',perfis:'📐 Perfis de Alumínio',projetos:'📁 Cadastro de Projetos',veiculos:'🚗 Controle de Uso de Veículos',
-  lucro:'💹 Lucro x Despesa por Projeto'
+  lucro:'💹 Lucro x Despesa por Projeto',nfconsulta:'🧾 Consulta de Notas Fiscais'
 };
 function refreshDatalists(){
   const fill=(id,items,codeKey,nameKey)=>{
@@ -2837,6 +2861,7 @@ function nav(page){
   if(page==='projetos')renderProjetosCadastro();
   if(page==='movimentacoes')renderMovTable();
   if(page==='custos')renderCustosHistorico();
+  if(page==='nfconsulta')renderNotasFiscais();
   if(page==='estoque')renderEstoque();
   if(page==='alertas')renderAlertas();
   if(page==='config')loadConfig();
@@ -3723,7 +3748,7 @@ function exportMovCSV(){
 // ═══════════════════════════════════════════════════════════════════════════
 // HISTÓRICO DE CUSTOS — registro permanente (nunca editado/apagado)
 // ═══════════════════════════════════════════════════════════════════════════
-const MODULO_CUSTO_LABELS={geral:'Estoque Geral',epi:'EPI',ferr:'Ferramentas',esc:'Material de Escritório',limp:'Material de Limpeza'};
+const MODULO_CUSTO_LABELS={geral:'Estoque Geral',epi:'EPI',ferr:'Ferramentas',esc:'Material de Escritório',limp:'Material de Limpeza',perfil:'Perfis de Alumínio'};
 function filtrarHistoricoCustos(){
   const qProd=norm(document.getElementById('custo-search-produto')?.value||'');
   const qForn=norm(document.getElementById('custo-search-fornecedor')?.value||'');
@@ -4484,7 +4509,150 @@ function exportarRelatorioProjetoCSV(){
   const total=list.reduce((s,it)=>s+it.totalValue,0);
   rows.push([]);rows.push(['TOTAL GERAL','','','','','','','',total,'']);
   downloadCSV(rows,'relatorio_saida_projeto_'+today()+'.csv');
-  toast('CSV do relatório gerado!');
+  // ═══════════════════════════════════════════════════════════════════════════
+// CONSULTA DE NOTAS FISCAIS — agrupa o Histórico de Custos (permanente, nunca
+// editado/apagado) por número de NF, juntando os itens de todos os módulos
+// que foram lançados na mesma nota.
+// ═══════════════════════════════════════════════════════════════════════════
+function coletarNotasFiscais(query,from,to){
+  const q=norm(query||'');
+  const groups={};
+  DBCUSTO.getHistorico().forEach(h=>{
+    if(!h.nfNumber)return;
+    if(from&&h.date<from)return;
+    if(to&&h.date>to)return;
+    const key=norm(h.nfNumber)+'|'+norm(h.supplier||'');
+    if(!groups[key]){
+      groups[key]={nfNumber:h.nfNumber,date:h.date,supplier:h.supplier||'',cnpj:h.cnpj||'',project:h.project||'',user:h.user||'',modules:new Set(),items:[],totalValue:0};
+    }
+    const g=groups[key];
+    if(h.date&&(!g.date||h.date<g.date))g.date=h.date;
+    if(!g.cnpj&&h.cnpj)g.cnpj=h.cnpj;
+    if(!g.project&&h.project)g.project=h.project;
+    g.modules.add(MODULO_CUSTO_LABELS[h.module]||h.module);
+    g.items.push(h);
+    g.totalValue+=h.totalValue||0;
+  });
+  let list=Object.values(groups);
+  if(q){
+    list=list.filter(g=>norm(g.nfNumber).includes(q)||norm(g.supplier).includes(q)||norm(g.cnpj).includes(q)||norm(g.project).includes(q));
+  }
+  list.sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  return list;
+}
+function renderNotasFiscais(){
+  const q=(document.getElementById('nfc-search').value||'').trim();
+  const from=document.getElementById('nfc-date-from').value;
+  const to=document.getElementById('nfc-date-to').value;
+  const tbl=document.getElementById('nfc-table');
+  const summary=document.getElementById('nfc-summary');
+  const list=coletarNotasFiscais(q,from,to);
+  window._nfcLista=list;
+  window._nfcQuery=q;
+  if(!list.length){ tbl.innerHTML='<div class="empty-state"><div class="ico">🧾</div>Nenhuma nota fiscal encontrada'+(q?' para "'+q+'"':'')+'.</div>'; summary.innerHTML=''; return; }
+  const total=list.reduce((s,g)=>s+g.totalValue,0);
+  summary.innerHTML=`<div class="card" style="display:inline-block;border-left:4px solid #375623;margin-right:12px"><h3>Notas Encontradas</h3><div class="num">${list.length}</div></div>
+    <div class="card" style="display:inline-block;border-left:4px solid #1F3864"><h3>Valor Total</h3><div class="num" style="color:#1F3864">R$ ${fmtNum(total)}</div></div>`;
+  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>NF</th><th>Data</th><th>Fornecedor</th><th>CNPJ</th><th>Módulo(s)</th><th>Itens</th><th>Valor Total</th><th>Projeto/Pedido</th><th>Ações</th></tr></thead>
+  <tbody>${list.map(g=>`<tr>
+    <td><b>${g.nfNumber}</b></td>
+    <td>${fmtDate(g.date)}</td>
+    <td>${g.supplier||'—'}</td>
+    <td>${g.cnpj||'—'}</td>
+    <td>${[...g.modules].join(', ')}</td>
+    <td style="text-align:center">${g.items.length}</td>
+    <td style="font-weight:700;color:#375623">R$ ${fmtNum(g.totalValue)}</td>
+    <td>${g.project||'—'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-sm btn-outline" onclick="verItensNF('${g.nfNumber.replace(/'/g,"\\'")}','${(g.supplier||'').replace(/'/g,"\\'")}')" title="Ver itens">👁️</button>
+      <button class="btn btn-sm btn-success" onclick="gerarNotaFiscalPDF('${g.nfNumber.replace(/'/g,"\\'")}','${(g.supplier||'').replace(/'/g,"\\'")}')" title="Gerar PDF">📄</button>
+    </td>
+  </tr>`).join('')}</tbody>
+  <tfoot><tr style="font-weight:800;background:#F5F5F5"><td colspan="6" style="text-align:right">TOTAL GERAL</td><td style="color:#1F3864">R$ ${fmtNum(total)}</td><td colspan="2"></td></tr></tfoot></table>`;
+}
+function _acharNF(nfNumber,supplier){
+  const list=window._nfcLista||coletarNotasFiscais('','','');
+  return list.find(g=>g.nfNumber===nfNumber&&(g.supplier||'')===(supplier||''));
+}
+function verItensNF(nfNumber,supplier){
+  const g=_acharNF(nfNumber,supplier);
+  if(!g){toast('Nota não encontrada.',false);return;}
+  const rows=g.items.map(it=>`<tr><td>${MODULO_CUSTO_LABELS[it.module]||it.module}</td><td><b>${it.productCode}</b></td><td>${it.productName}</td><td style="text-align:right">${fmtNum(it.quantity)}</td><td style="text-align:right">R$ ${fmtNum(it.unitPrice)}</td><td style="text-align:right;font-weight:700">R$ ${fmtNum(it.totalValue)}</td></tr>`).join('');
+  showGenModal(`<div class="modal" style="max-width:720px">
+    <h2>🧾 Nota Fiscal ${g.nfNumber}</h2>
+    <p style="font-size:12px;color:#888;margin:-4px 0 12px">Fornecedor: ${g.supplier||'—'}${g.cnpj?' — CNPJ '+g.cnpj:''} — Data: ${fmtDate(g.date)}${g.project?' — Projeto/Pedido: '+g.project:''}</p>
+    <div class="tbl-wrap" style="max-height:360px;overflow:auto">
+      <table class="mod-table"><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th></tr></thead>
+      <tbody>${rows}</tbody>
+      <tfoot><tr style="font-weight:800;background:#F5F5F5"><td colspan="5" style="text-align:right">TOTAL</td><td style="text-align:right;color:#1F3864">R$ ${fmtNum(g.totalValue)}</td></tr></tfoot></table>
+    </div>
+    <div class="btn-group" style="margin-top:12px">
+      <button class="btn btn-success" onclick="gerarNotaFiscalPDF('${g.nfNumber.replace(/'/g,"\\'")}','${(g.supplier||'').replace(/'/g,"\\'")}')">📄 Gerar PDF</button>
+      <button class="btn btn-outline" onclick="closeGenModal()">Fechar</button>
+    </div>
+  </div>`);
+}
+function gerarNotaFiscalPDF(nfNumber,supplier){
+  const g=_acharNF(nfNumber,supplier);
+  if(!g){toast('Nota não encontrada.',false);return;}
+  const cfg=DB.getCfg();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  if(cfg.logo){ try{const fmt=cfg.logo.includes('image/png')?'PNG':'JPEG';doc.addImage(cfg.logo,fmt,14,10,28,18);}catch(e){} }
+  doc.setFontSize(15);doc.setTextColor(31,56,100);
+  doc.text(cfg.empresa||'Empresa',cfg.logo?48:14,18);
+  doc.setFontSize(12);doc.setTextColor(0,0,0);
+  doc.text('Nota Fiscal '+g.nfNumber,14,32);
+  doc.setFontSize(10);
+  doc.text('Fornecedor: '+(g.supplier||'—'),14,39);
+  let y=45;
+  if(g.cnpj){ doc.text('CNPJ: '+g.cnpj,14,y); y+=6; }
+  if(g.project){ doc.text('Projeto/Pedido: '+g.project,14,y); y+=6; }
+  doc.text('Data: '+fmtDate(g.date),150,32);
+  doc.text('Emissão: '+fmtDate(today()),150,39);
+  const body=g.items.map(it=>[MODULO_CUSTO_LABELS[it.module]||it.module,it.productCode,it.productName,fmtNum(it.quantity),'R$ '+fmtNum(it.unitPrice),'R$ '+fmtNum(it.totalValue)]);
+  doc.autoTable({startY:y+4,head:[['Módulo','Código','Descrição','Qtd','V.Unit','V.Total']],body,styles:{fontSize:8},headStyles:{fillColor:[31,56,100]}});
+  const finalY=doc.lastAutoTable.finalY+10;
+  doc.setFontSize(12);
+  doc.text('TOTAL DA NOTA: R$ '+fmtNum(g.totalValue),14,finalY);
+  doc.save('nota_fiscal_'+String(g.nfNumber).replace(/[^a-zA-Z0-9]/g,'_')+'.pdf');
+  toast('PDF da nota fiscal gerado!');
+}
+function gerarNotasFiscaisPDF(){
+  const list=window._nfcLista;
+  if(!list||!list.length){toast('Faça uma busca com resultados antes de gerar o PDF!',false);return;}
+  const cfg=DB.getCfg();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  if(cfg.logo){ try{const fmt=cfg.logo.includes('image/png')?'PNG':'JPEG';doc.addImage(cfg.logo,fmt,14,10,28,18);}catch(e){} }
+  doc.setFontSize(15);doc.setTextColor(31,56,100);
+  doc.text(cfg.empresa||'Empresa',cfg.logo?48:14,18);
+  doc.setFontSize(12);doc.setTextColor(0,0,0);
+  doc.text('Consulta de Notas Fiscais',14,32);
+  doc.setFontSize(10);
+  doc.text('Filtro: "'+(window._nfcQuery||'Todas')+'"',14,39);
+  doc.text('Emissão: '+fmtDate(today()),150,32);
+  const body=list.map(g=>[g.nfNumber,fmtDate(g.date),g.supplier||'—',[...g.modules].join(', '),String(g.items.length),'R$ '+fmtNum(g.totalValue)]);
+  doc.autoTable({startY:45,head:[['NF','Data','Fornecedor','Módulo(s)','Itens','Valor Total']],body,styles:{fontSize:8},headStyles:{fillColor:[31,56,100]}});
+  const total=list.reduce((s,g)=>s+g.totalValue,0);
+  const finalY=doc.lastAutoTable.finalY+10;
+  doc.setFontSize(12);
+  doc.text('TOTAL GERAL: R$ '+fmtNum(total),14,finalY);
+  doc.save('notas_fiscais_'+today()+'.pdf');
+  toast('PDF gerado!');
+}
+function exportarNotasFiscaisCSV(){
+  const list=window._nfcLista;
+  if(!list||!list.length){toast('Faça uma busca com resultados antes de exportar!',false);return;}
+  const rows=[['NF','Data','Fornecedor','CNPJ','Módulo(s)','Itens','Valor Total','Projeto/Pedido']];
+  list.forEach(g=>rows.push([g.nfNumber,fmtDate(g.date),g.supplier||'',g.cnpj||'',[...g.modules].join(', '),g.items.length,g.totalValue,g.project||'']));
+  const total=list.reduce((s,g)=>s+g.totalValue,0);
+  rows.push([]);rows.push(['TOTAL GERAL','','','','','',total,'']);
+  downloadCSV(rows,'notas_fiscais_'+today()+'.csv');
+  toast('CSV gerado!');
+}
+
+toast('CSV do relatório gerado!');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
