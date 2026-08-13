@@ -3043,12 +3043,12 @@ function renderProdTable(){
     return;
   }
   document.getElementById('prod-table').innerHTML=`
-    <table><thead><tr><th style="width:62px">Foto</th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Cor</th><th>UND</th><th>Saldo</th><th>Est. Mín</th><th>V. Unit</th><th>Custo Médio</th><th>V. Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table><thead><tr><th style="width:62px">Foto</th><th>Código</th><th>Descrição</th><th>Categoria</th><th>Cor</th><th>UND</th><th>Saldo</th><th>Est. Mín</th><th>V. Unit</th><th>V. Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${(window._prodRender=prods,prods).map((p,i)=>{
       const _pvk=DB.getProdVK(p);
       const stk=DB.getStock(_pvk);
       const sit2=DB.getSituation(_pvk);
-      return`<tr><td style="padding:4px 6px;width:52px"><div id="pimg-${i}" class="cat-no-img" style="width:44px;height:44px;font-size:16px">📦</div></td><td><b>${p.code}</b></td><td>${p.name}</td><td><span class="${catTag(p.category)}">${p.category||'—'}</span></td><td>${p.color?`<span style="display:inline-block;width:12px;height:12px;background:${p.color.toLowerCase()};border-radius:3px;border:1px solid #CCC;vertical-align:middle;margin-right:4px"></span>${p.color}`:'-'}</td><td>${p.unit||'UN'}</td><td style="font-weight:700;color:${sit2==='SEM MOVIMENTO'?'#AAA':stk<=0?'#C00000':stk<=(p.minStock||0)&&p.minStock>0?'#E26B0A':'#375623'}">${sit2==='SEM MOVIMENTO'?'—':fmtNum(stk)}</td><td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td><td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td><td>R$ ${fmtNum(stk*(p.unitPrice||0))}</td><td>${tagSit(sit2)}</td><td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="_editProd(${i})" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneProd(${i})" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delProd(${i})" title="Excluir">🗑</button></td></tr>`;
+      return`<tr><td style="padding:4px 6px;width:52px"><div id="pimg-${i}" class="cat-no-img" style="width:44px;height:44px;font-size:16px">📦</div></td><td><b>${p.code}</b></td><td>${p.name}</td><td><span class="${catTag(p.category)}">${p.category||'—'}</span></td><td>${p.color?`<span style="display:inline-block;width:12px;height:12px;background:${p.color.toLowerCase()};border-radius:3px;border:1px solid #CCC;vertical-align:middle;margin-right:4px"></span>${p.color}`:'-'}</td><td>${p.unit||'UN'}</td><td style="font-weight:700;color:${sit2==='SEM MOVIMENTO'?'#AAA':stk<=0?'#C00000':stk<=(p.minStock||0)&&p.minStock>0?'#E26B0A':'#375623'}">${sit2==='SEM MOVIMENTO'?'—':fmtNum(stk)}</td><td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td><td>R$ ${fmtNum(stk*(p.unitPrice||0))}</td><td>${tagSit(sit2)}</td><td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="_editProd(${i})" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneProd(${i})" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delProd(${i})" title="Excluir">🗑</button></td></tr>`;
     }).join('')}</tbody></table>
     <div style="padding:8px 0;font-size:12px;color:#888">${prods.length} produto(s) encontrado(s)</div>`;
   prods.forEach((p,i)=>injectCatThumb('pimg-'+i,p.code,44));
@@ -5347,7 +5347,7 @@ function renderEPIEstoque(){
     return;
   }
   document.getElementById('epi-estoque-table').innerHTML=`
-    <table class="mod-table"><thead><tr><th>Código</th><th>EPI</th><th>CA Nº</th><th>Validade CA</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Custo Médio</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table class="mod-table"><thead><tr><th>Código</th><th>EPI</th><th>CA Nº</th><th>Validade CA</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${prods.map(p=>{
       const movs=DBX.getEPIMovs().filter(m=>norm(m.productCode)===norm(p.code));
       const ent=movs.filter(m=>m.type==='Entrada').reduce((s,m)=>s+m.quantity,0);
@@ -5364,7 +5364,6 @@ function renderEPIEstoque(){
         <td style="font-weight:800;font-size:15px;color:${stk<=0?'#C00000':p.minStock>0&&stk<=p.minStock?'#E26B0A':'#375623'}">${fmtNum(stk)}</td>
         <td>${p.minStock||0}</td>
         <td>R$ ${fmtNum(p.unitPrice||0)}</td>
-        <td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td>
         <td>${modSit(stk,p.minStock||0)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="openEPICadModal('${p.code}')" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneEPI('${p.code}')" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delEPI('${p.code}','${p.name}')" title="Excluir">🗑</button></td>
       </tr>`;}).join('')}</tbody></table>`;
@@ -5822,7 +5821,7 @@ function renderFerrEstoque(){
     return;
   }
   document.getElementById('ferr-estoque-table').innerHTML=`
-    <table class="mod-table"><thead><tr><th>Código</th><th>Ferramenta</th><th>Nº Série</th><th>Localização</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Custo Médio</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table class="mod-table"><thead><tr><th>Código</th><th>Ferramenta</th><th>Nº Série</th><th>Localização</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${prods.map(p=>{
       const movs=JSON.parse(localStorage.getItem('ax_ferr_movs')||'[]').filter(m=>norm(m.productCode)===norm(p.code));
       const ent=movs.filter(m=>m.type==='Entrada').reduce((s,m)=>s+m.quantity,0);
@@ -5834,7 +5833,6 @@ function renderFerrEstoque(){
         <td style="color:#C00000;font-weight:600">−${fmtNum(sai)}</td>
         <td style="font-weight:800;font-size:15px;color:${stk<=0?'#C00000':p.minStock>0&&stk<=p.minStock?'#E26B0A':'#375623'}">${fmtNum(stk)}</td>
         <td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td>
-        <td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td>
         <td>${modSit(stk,p.minStock||0)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="openFerrCadModal('${p.code}')" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneFerr('${p.code}')" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delFerr('${p.code}','${p.name}')" title="Excluir">🗑</button></td>
       </tr>`;}).join('')}</tbody></table>`;
@@ -6178,7 +6176,7 @@ function renderEscEstoque(){
   const prods=DBX.getEscCad().filter(p=>!q||norm(p.code).includes(q)||norm(p.name).includes(q));
   if(!prods.length){document.getElementById('esc-estoque-table').innerHTML='<div class="empty-state"><div class="ico">📋</div>Nenhum item cadastrado.<br><button class="btn btn-primary mt8" onclick="openEscCadModal()">+ Cadastrar Item</button></div>';return;}
   document.getElementById('esc-estoque-table').innerHTML=`
-    <table class="mod-table"><thead><tr><th>Código</th><th>Item</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Custo Médio</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table class="mod-table"><thead><tr><th>Código</th><th>Item</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${prods.map(p=>{
       const movs=DBX.getEscMovs().filter(m=>norm(m.productCode)===norm(p.code));
       const ent=movs.filter(m=>m.type==='Entrada').reduce((s,m)=>s+m.quantity,0);
@@ -6190,7 +6188,6 @@ function renderEscEstoque(){
         <td style="color:#C00000;font-weight:600">−${fmtNum(sai)}</td>
         <td style="font-weight:800;font-size:15px;color:${stk<=0?'#C00000':p.minStock>0&&stk<=p.minStock?'#E26B0A':'#375623'}">${fmtNum(stk)}</td>
         <td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td>
-        <td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td>
         <td>R$ ${fmtNum(stk*(p.unitPrice||0))}</td>
         <td>${modSit(stk,p.minStock||0)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="openEscCadModal('${p.code}')" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneEsc('${p.code}')" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delEsc('${p.code}','${p.name}')" title="Excluir">🗑</button></td>
@@ -6780,7 +6777,7 @@ function renderLimpEstoque(){
   const el=document.getElementById('limp-estoque-table');
   if(!prods.length){el.innerHTML='<div class="empty-state"><div class="ico">🧹</div>Nenhum item de limpeza cadastrado.<br><button class="btn btn-primary mt8" onclick="openLimpCadModal()">+ Cadastrar Item</button></div>';return;}
   el.innerHTML=`
-    <table class="mod-table"><thead><tr><th>Código</th><th>Item</th><th>Cor</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Custo Médio</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table class="mod-table"><thead><tr><th>Código</th><th>Item</th><th>Cor</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${prods.map(p=>{
       const movs=DBX.getLimpMovs().filter(m=>norm(m.productCode)===norm(p.code));
       const ent=movs.filter(m=>m.type==='Entrada').reduce((s,m)=>s+m.quantity,0);
@@ -6794,7 +6791,6 @@ function renderLimpEstoque(){
         <td style="color:#C00000;font-weight:600">-${fmtNum(sai)}</td>
         <td style="font-weight:800;font-size:15px;color:${stk<=0?'#C00000':p.minStock>0&&stk<=p.minStock?'#E26B0A':'#375623'}">${fmtNum(stk)}</td>
         <td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td>
-        <td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td>
         <td>R$ ${fmtNum(stk*(p.unitPrice||0))}</td>
         <td>${modSit(stk,p.minStock||0)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="openLimpCadModal('${p.code}')" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_cloneLimp('${p.code}')" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delLimp('${p.code}','${p.name}')" title="Excluir">🗑</button></td>
@@ -7059,7 +7055,7 @@ function renderPerfilEstoque(){
   });
   if(!prods.length){document.getElementById('perfil-estoque-table').innerHTML='<div class="empty-state"><div class="ico">📐</div>Nenhum perfil encontrado.<br><button class="btn btn-primary mt8" onclick="openPerfilCadModal()">+ Cadastrar Perfil</button></div>';return;}
   document.getElementById('perfil-estoque-table').innerHTML=`
-    <table class="mod-table"><thead><tr><th>Código</th><th>Descrição</th><th>Altura</th><th>Largura</th><th>Comprimento</th><th>Cor</th><th>Kg/Barra</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>Custo Médio</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
+    <table class="mod-table"><thead><tr><th>Código</th><th>Descrição</th><th>Altura</th><th>Largura</th><th>Comprimento</th><th>Cor</th><th>Kg/Barra</th><th>UND</th><th>Entradas</th><th>Saídas</th><th>Saldo</th><th>Est.Mín</th><th>V.Unit</th><th>V.Estoque</th><th>Situação</th><th>Ações</th></tr></thead>
     <tbody>${prods.map(p=>{
       const movs=DBX.getPerfilMovs().filter(m=>norm(m.productCode)===norm(p.code));
       const ent=movs.filter(m=>m.type==='Entrada').reduce((s,m)=>s+m.quantity,0);
@@ -7075,7 +7071,6 @@ function renderPerfilEstoque(){
         <td style="color:#C00000;font-weight:600">−${fmtNum(sai)}</td>
         <td style="font-weight:800;font-size:15px;color:${stk<=0?'#C00000':p.minStock>0&&stk<=p.minStock?'#E26B0A':'#375623'}">${fmtNum(stk)}</td>
         <td>${p.minStock||0}</td><td>R$ ${fmtNum(p.unitPrice||0)}</td>
-        <td style="color:#1F3864;font-weight:600">${p.custoMedio!=null?'R$ '+fmtNum(p.custoMedio):'—'}</td>
         <td>R$ ${fmtNum(stk*(p.unitPrice||0))}</td>
         <td>${modSit(stk,p.minStock||0)}</td>
         <td style="white-space:nowrap"><button class="btn btn-sm btn-outline" onclick="openPerfilCadModal('${p.code}')" title="Editar">✏️</button> <button class="btn btn-sm" style="background:#E8F0FE;color:#1F3864;border:1px solid #B8CCE4" onclick="_clonePerfil('${p.code}')" title="Clonar">📋</button> <button class="btn btn-sm btn-danger" onclick="_delPerfil('${p.code}','${p.name}')" title="Excluir">🗑</button></td>
