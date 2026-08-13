@@ -1992,7 +1992,7 @@ function exportCatCSV(){
     <div class="form-grid cols3">
       <div class="fld"><label>Unidade</label>
         <select id="pm-unit">
-          <option>UN</option><option>PC</option><option>M</option><option>M²</option>
+          <option>UN</option><option>PC</option><option>M</option><option>METROS</option><option>M²</option>
           <option>KG</option><option>CX</option><option>RL</option><option>JG</option>
           <option>PR</option><option>LT</option><option>FRASCO</option><option>GL</option><option>KIT</option>
         </select>
@@ -4298,12 +4298,25 @@ function valorSaidaItem(rec){
   return null;
 }
 function precoAtualItem(module,code){
-  if(module==='geral'){ const p=DB.getProd(code); return p?(p.custoMedio??p.unitPrice??0):0; }
+  // Usa sempre o "Valor Unitário" do Cadastro (mesmo campo editado pelo usuário),
+  // para o valor ficar idêntico em todos os relatórios. Custo Médio (PEPS) só
+  // entra como reserva caso o produto não tenha Valor Unitário definido.
+  if(module==='geral'){ const p=DB.getProd(code); return p?(p.unitPrice??p.custoMedio??0):0; }
   const getters={epi:DBX.getEPIProd,ferr:DBX.getFerrProd,esc:DBX.getEscProd,limp:DBX.getLimpProd,perfil:DBX.getPerfilProd};
   const fn=getters[module];
   const p=fn?fn.call(DBX,code):null;
-  return p?(p.custoMedio??p.unitPrice??0):0;
+  return p?(p.unitPrice??p.custoMedio??0):0;
 }
+const REL_PROJ_STORES = {
+  geral:  { get:()=>DB.getMovs(),                                            save:(a)=>DB.saveMovs(a) },
+  epi:    { get:()=>DBX.getEPIMovs(),                                        save:(a)=>DBX.saveEPIMovs(a) },
+  ferr:   { get:()=>JSON.parse(localStorage.getItem('ax_ferr_movs')||'[]'),  save:(a)=>localStorage.setItem('ax_ferr_movs',JSON.stringify(a)) },
+  esc:    { get:()=>DBX.getEscMovs(),                                        save:(a)=>localStorage.setItem('ax_esc_movs',JSON.stringify(a)) },
+  limp:   { get:()=>DBX.getLimpMovs(),                                       save:(a)=>localStorage.setItem('ax_limp_movs',JSON.stringify(a)) },
+  perfil: { get:()=>DBX.getPerfilMovs(),                                     save:(a)=>localStorage.setItem('ax_perfil_movs',JSON.stringify(a)) },
+  servico:{ get:()=>DBSERV.getMovs(),                                        save:(a)=>DBSERV.saveMovs(a) }
+};
+const RELMOV_TRASH_TYPE = {geral:'movimentacao',epi:'epi_mov',ferr:'ferr_mov',esc:'esc_mov',limp:'limp_mov',perfil:'perfil_mov',servico:'servico_mov'};
 function coletarSaidasPorProjeto(query,from,to){
   const q=norm(query);
   const out=[];
@@ -4326,12 +4339,12 @@ function coletarSaidasPorProjeto(query,from,to){
       unitPrice=rec.unitPrice||0;
       unitTotal=unitPrice*(rec.quantity||0);
     } else {
-      unitTotal=valorSaidaItem(rec);
-      if(unitTotal!=null&&rec.quantity){ unitPrice=unitTotal/rec.quantity; }
-      else if(module==='geral'&&rec.unitPrice!=null){ unitPrice=rec.unitPrice; unitTotal=unitPrice*(rec.quantity||0); }
-      else { unitPrice=precoAtualItem(module,code); unitTotal=unitPrice*(rec.quantity||0); }
+      // Saída: sempre usar o preço ATUAL do cadastro do produto (em vez do custo
+      // histórico do lote PEPS), para ficar sempre igual ao Cadastro de Produtos.
+      unitPrice=precoAtualItem(module,code);
+      unitTotal=unitPrice*(rec.quantity||0);
     }
-    out.push({date:rec.date,type:rec.type,module,moduleLabel,code,name,quantity:rec.quantity||0,unitPrice,totalValue:unitTotal,
+    out.push({id:rec.id,date:rec.date,type:rec.type,module,moduleLabel,code,name,quantity:rec.quantity||0,unitPrice,totalValue:unitTotal,
       project:rec.project||'',pedido:rec.pedido||rec.nfNumber||'',collaborator:rec.collaborator||rec.client||''});
   }
   DB.getMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('geral','Estoque Geral',m));
@@ -4358,7 +4371,7 @@ function renderRelatorioProjeto(){
   const total=list.reduce((s,it)=>s+it.totalValue,0);
   summary.innerHTML=`<div class="card" style="display:inline-block;border-left:4px solid #375623;margin-right:12px"><h3>Itens Encontrados</h3><div class="num">${list.length}</div></div>
     <div class="card" style="display:inline-block;border-left:4px solid #1F3864"><h3>Valor Total Gasto</h3><div class="num" style="color:#1F3864">R$ ${fmtNum(total)}</div></div>`;
-  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>Data</th><th>Tipo</th><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th><th>Projeto/Pedido</th><th>Colaborador</th></tr></thead>
+  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>Data</th><th>Tipo</th><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th><th>Projeto/Pedido</th><th>Colaborador</th><th>Ações</th></tr></thead>
   <tbody>${list.map(it=>`<tr>
     <td>${fmtDate(it.date)}</td>
     <td>${it.type==='Entrada'?'<span class="tag" style="background:#E2EFDA;color:#375623">⬇ Entrada</span>':'<span class="tag" style="background:#FCE4E4;color:#C00000">⬆ Saída</span>'}</td>
@@ -4366,8 +4379,78 @@ function renderRelatorioProjeto(){
     <td style="font-weight:700">${fmtNum(it.quantity)}</td><td>R$ ${fmtNum(it.unitPrice)}</td>
     <td style="font-weight:700;color:#375623">R$ ${fmtNum(it.totalValue)}</td>
     <td>${it.project||it.pedido||'—'}</td><td>${it.collaborator||'—'}</td>
+    <td style="white-space:nowrap">${it.id?`<button class="btn btn-sm btn-outline" onclick="editarRelProjItem('${it.module}','${it.id}')" title="Editar">✏️</button> <button class="btn btn-sm btn-danger" onclick="excluirRelProjItem('${it.module}','${it.id}')" title="Excluir">🗑️</button>`:'—'}</td>
   </tr>`).join('')}</tbody>
   <tfoot><tr style="font-weight:800;background:#F5F5F5"><td colspan="7" style="text-align:right">TOTAL GERAL</td><td style="color:#1F3864">R$ ${fmtNum(total)}</td><td colspan="2"></td></tr></tfoot></table>`;
+}
+function editarRelProjItem(module,id){
+  const store=REL_PROJ_STORES[module];
+  if(!store){toast('Este item não pode ser editado.',false);return;}
+  const m=store.get().find(x=>x.id===id);
+  if(!m){toast('Registro não encontrado.',false);return;}
+  const isEntrada=m.type==='Entrada';
+  const isManual=!!m.manualValue;
+  const label=module==='servico'?(m.descricao||m.productName||''):((m.productCode||'')+' — '+(m.productName||''));
+  showGenModal(`<div class="modal" style="max-width:560px">
+    <h2>${isEntrada?'✏️ Editar Entrada':'✏️ Editar Saída'}</h2>
+    <p style="font-size:12px;color:#888;margin:-4px 0 12px">${label}</p>
+    <div class="form-grid cols2">
+      <div class="fld"><label>Data <span>*</span></label><input id="rpm-date" type="date" value="${m.date||''}"></div>
+      <div class="fld"><label>Quantidade <span>*</span></label><input id="rpm-qty" type="number" min="0.01" step="any" value="${m.quantity||0}"></div>
+      <div class="fld"><label>${isManual?'Valor (R$)':'Valor Unitário (R$)'}</label><input id="rpm-price" type="number" min="0" step="0.01" value="${m.unitPrice||0}"></div>
+      <div class="fld"><label>Projeto</label><input id="rpm-proj" value="${m.project||''}"></div>
+      <div class="fld"><label>Pedido</label><input id="rpm-pedido" value="${m.pedido||m.nfNumber||''}"></div>
+      <div class="fld"><label>Colaborador</label><input id="rpm-colab" value="${m.collaborator||m.client||''}"></div>
+      <div class="fld"><label>Observação</label><input id="rpm-obs" value="${m.obs||''}"></div>
+    </div>
+    <p style="font-size:11px;color:#999;margin-top:-4px">Obs: para itens de Saída, o Valor Unitário exibido no relatório sempre segue o Valor Unitário atual do Cadastro de Produtos — o campo acima só afeta outras telas (ex: Histórico).</p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="salvarEdicaoRelProjItem('${module}','${id}')">💾 Salvar</button>
+      <button class="btn btn-outline" onclick="closeGenModal()">Cancelar</button>
+    </div>
+  </div>`);
+}
+function salvarEdicaoRelProjItem(module,id){
+  const store=REL_PROJ_STORES[module];
+  if(!store)return;
+  const date=document.getElementById('rpm-date').value;
+  const qty=parseFloat(document.getElementById('rpm-qty').value)||0;
+  const price=parseFloat(document.getElementById('rpm-price').value)||0;
+  if(!date){toast('Informe a data!',false);return;}
+  if(qty<=0){toast('Quantidade deve ser maior que zero!',false);return;}
+  const arr=store.get();
+  const m=arr.find(x=>x.id===id);
+  if(!m){closeGenModal();return;}
+  const proj=document.getElementById('rpm-proj').value.trim();
+  const pedido=document.getElementById('rpm-pedido').value.trim();
+  const colab=document.getElementById('rpm-colab').value.trim();
+  const obs=document.getElementById('rpm-obs').value.trim();
+  const upd={date,quantity:qty,unitPrice:price,project:proj,obs};
+  if('nfNumber' in m || module==='geral') upd.nfNumber=pedido; else upd.pedido=pedido;
+  if('client' in m && module==='geral' && m.type==='Saída') upd.client=colab; else upd.collaborator=colab;
+  if(m.manualValue) upd.totalValue=qty*price;
+  store.save(arr.map(x=>x.id===id?{...x,...upd}:x));
+  closeGenModal();
+  toast('Lançamento atualizado!');
+  renderRelatorioProjeto();
+  if(document.getElementById('lucro-table')){ try{renderLucroDespesa();}catch(e){} }
+  try{renderDashboard();}catch(e){}
+}
+function excluirRelProjItem(module,id){
+  const store=REL_PROJ_STORES[module];
+  if(!store){toast('Este item não pode ser excluído.',false);return;}
+  const arr=store.get();
+  const m=arr.find(x=>x.id===id);
+  if(!m){toast('Registro não encontrado.',false);return;}
+  const label=module==='servico'?(m.descricao||m.productName||''):(m.productName||m.productCode||'');
+  confirm2('Excluir este lançamento?\n\n'+(m.type==='Entrada'?'↓ Entrada':'↑ Saída')+' de '+fmtNum(m.quantity)+' '+label+' em '+fmtDate(m.date)+'.\n\nO lançamento vai para a Lixeira e pode ser restaurado.',()=>{
+    DBTRASH.add(RELMOV_TRASH_TYPE[module]||('mov_'+module),m,label+' — '+(m.type==='Entrada'?'Entrada':'Saída')+' '+fmtNum(m.quantity),m.productCode||'');
+    store.save(arr.filter(x=>x.id!==id));
+    toast('Lançamento excluído! Pode ser restaurado na Lixeira.');
+    renderRelatorioProjeto();
+    if(document.getElementById('lucro-table')){ try{renderLucroDespesa();}catch(e){} }
+    try{renderDashboard();updateBadges();}catch(e){}
+  });
 }
 function gerarRelatorioProjetoPDF(){
   const list=window._relProjLista;
@@ -4793,7 +4876,7 @@ function salvarConfig(){
 // ═══════════════════════════════════════════════════════════════════════════
 // LIXEIRA - RENDER & RESTORE
 // ═══════════════════════════════════════════════════════════════════════════
-const MODULE_LABELS={produto:'📦 Produto',epi:'🦺 EPI',ferr:'🔧 Ferramenta',esc:'📋 Escritório',limp:'🧹 Limpeza',perfil:'📐 Perfil de Alumínio',movimentacao:'🔁 Movimentação',veiculo:'🚗 Uso de Veículo',epi_ficha:'📋 Ficha de EPI',epi_mov:'🦺 Mov. de EPI',funcionario:'👤 Funcionário'};
+const MODULE_LABELS={produto:'📦 Produto',epi:'🦺 EPI',ferr:'🔧 Ferramenta',esc:'📋 Escritório',limp:'🧹 Limpeza',perfil:'📐 Perfil de Alumínio',movimentacao:'🔁 Movimentação',veiculo:'🚗 Uso de Veículo',epi_ficha:'📋 Ficha de EPI',epi_mov:'🦺 Mov. de EPI',funcionario:'👤 Funcionário',ferr_mov:'🔧 Mov. de Ferramenta',esc_mov:'📋 Mov. de Escritório',limp_mov:'🧹 Mov. de Limpeza',perfil_mov:'📐 Mov. de Perfil',servico_mov:'🛠️ Mov. de Serviço'};
 function renderLixeira(){
   updateLixeiraBadge();
   const items=DBTRASH.get();
@@ -4855,6 +4938,11 @@ function restaurarItem(id){
       if(DBX.getFuncionarios().some(f=>norm(f.nome)===norm(item.data.nome))){toast('Já existe um funcionário com esse nome.',false);return;}
       const funcs=DBX.getFuncionarios();funcs.push(item.data);DBX.saveFuncionarios(funcs);
       try{refreshDatalists();}catch(e){}
+    } else if(item.module==='ferr_mov'||item.module==='esc_mov'||item.module==='limp_mov'||item.module==='perfil_mov'||item.module==='servico_mov'){
+      const modKey=item.module.replace('_mov','');
+      const store=REL_PROJ_STORES[modKey];
+      if(store){ const arr=store.get(); arr.unshift(item.data); store.save(arr); }
+      try{renderRelatorioProjeto();}catch(e){}
     }
     DBTRASH.remove(id);
     renderLixeira();updateBadges();
