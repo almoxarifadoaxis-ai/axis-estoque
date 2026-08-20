@@ -1057,13 +1057,13 @@ function exportCatCSV(){
         </div>
         <hr class="divider">
         <div class="panel-header">
-          <h3>🛠️ Mão de Obra / Serviço</h3>
-          <button class="btn btn-warn" onclick="addSaidaServico()">+ Adicionar Mão de Obra/Serviço</button>
+          <h3>🛠️ Mão de Obra / Item sem Estoque</h3>
+          <button class="btn btn-warn" onclick="addSaidaServico()">+ Adicionar Item (sem controle de estoque)</button>
         </div>
-        <p style="font-size:12px;color:#777;margin:-6px 0 12px">Não movimenta estoque — use para lançar mão de obra ou outros serviços num projeto. O valor é digitado livremente, não é calculado por quantidade.</p>
+        <p style="font-size:12px;color:#777;margin:-6px 0 12px">Não movimenta estoque — use para mão de obra, serviços ou materiais que você compra conforme a necessidade da obra e não cadastra no estoque (ex: vidros, insumos avulsos). Informe descrição, quantidade e valor unitário.</p>
         <div class="tbl-wrap">
           <table id="saida-servicos-table">
-            <thead><tr><th style="min-width:220px">Descrição <span style="color:#ffeb9c">*</span></th><th style="width:160px">Valor (R$) <span style="color:#ffeb9c">*</span></th><th></th></tr></thead>
+            <thead><tr><th style="width:150px">Tipo</th><th style="min-width:220px">Descrição <span style="color:#ffeb9c">*</span></th><th style="width:100px">Qtd <span style="color:#ffeb9c">*</span></th><th style="width:140px">V.Unit (R$) <span style="color:#ffeb9c">*</span></th><th style="width:120px">V.Total</th><th></th></tr></thead>
             <tbody id="saida-servicos-body"></tbody>
           </table>
         </div>
@@ -3423,7 +3423,7 @@ function initSaida(){
   renderSaidaServicos();
 }
 function addSaidaServico(){
-  saidaServicos.push({desc:'',valor:0});
+  saidaServicos.push({tipo:'mao_obra',desc:'',qty:1,valor:0});
   renderSaidaServicos();
 }
 function removeSaidaServico(i){
@@ -3441,13 +3441,19 @@ function renderSaidaServicos(){
   const tbody=document.getElementById('saida-servicos-body');
   if(!tbody)return;
   if(saidaServicos.length===0){
-    tbody.innerHTML=`<tr><td colspan="3" class="empty-state" style="padding:16px">Nenhum lançamento de mão de obra/serviço nesta saída.</td></tr>`;
+    tbody.innerHTML=`<tr><td colspan="6" class="empty-state" style="padding:16px">Nenhum lançamento de mão de obra ou item sem estoque nesta saída.</td></tr>`;
     return;
   }
   tbody.innerHTML=saidaServicos.map((it,i)=>`
     <tr>
-      <td><input value="${String(it.desc||'').replace(/"/g,'&quot;')}" list="dl-servicos" placeholder="Ex: Mão de obra - Instalação" onchange="saidaServicos[${i}].desc=this.value"></td>
-      <td><input type="number" min="0" step="0.01" value="${it.valor||0}" onchange="saidaServicos[${i}].valor=parseFloat(this.value)||0"></td>
+      <td><select onchange="saidaServicos[${i}].tipo=this.value">
+        <option value="mao_obra" ${it.tipo!=='material'?'selected':''}>🛠️ Mão de Obra</option>
+        <option value="material" ${it.tipo==='material'?'selected':''}>📦 Material sem Estoque</option>
+      </select></td>
+      <td><input value="${String(it.desc||'').replace(/"/g,'&quot;')}" list="dl-servicos" placeholder="Ex: Mão de obra - Instalação, ou Vidros - Fachada" onchange="saidaServicos[${i}].desc=this.value"></td>
+      <td><input type="number" min="0.01" step="any" value="${it.qty||1}" onchange="saidaServicos[${i}].qty=parseFloat(this.value)||0;renderSaidaServicos();"></td>
+      <td><input type="number" min="0" step="0.01" value="${it.valor||0}" onchange="saidaServicos[${i}].valor=parseFloat(this.value)||0;renderSaidaServicos();"></td>
+      <td style="font-weight:700;color:#375623">R$ ${fmtNum((it.qty||0)*(it.valor||0))}</td>
       <td><button class="btn btn-danger btn-sm" onclick="removeSaidaServico(${i})">✕</button></td>
     </tr>`).join('');
 }
@@ -3585,8 +3591,9 @@ function registrarSaida(){
   }
   for(let i=0;i<saidaServicos.length;i++){
     const s=saidaServicos[i];
-    if(!s.desc||!s.desc.trim()){toast(`Mão de obra/Serviço ${i+1}: informe a descrição!`,false);return;}
-    if(!s.valor||s.valor<=0){toast(`Mão de obra/Serviço ${i+1}: informe um valor válido!`,false);return;}
+    if(!s.desc||!s.desc.trim()){toast(`Mão de obra/Item ${i+1}: informe a descrição!`,false);return;}
+    if(!s.qty||s.qty<=0){toast(`Mão de obra/Item ${i+1}: informe uma quantidade válida!`,false);return;}
+    if(!s.valor||s.valor<=0){toast(`Mão de obra/Item ${i+1}: informe um valor unitário válido!`,false);return;}
   }
   saidaItems.forEach(item=>{
     const prod=DB.getProd(item.code);
@@ -3606,18 +3613,19 @@ function registrarSaida(){
       lotsConsumidos:peps.consumidos
     });
   });
-  // Mão de obra / Serviço: não passa por estoque nem PEPS — o valor lançado
-  // é sempre o digitado manualmente (não é calculado por quantidade).
+  // Mão de obra / Item sem estoque: não passa por estoque nem PEPS — quantidade
+  // e valor unitário são sempre digitados manualmente (não vêm do cadastro).
   saidaServicos.forEach(s=>{
     DBSERV.addMov({
       type:'Saída',
       date,
+      tipo:s.tipo||'mao_obra',
       productCode:'',
       productName:s.desc.trim(),
       descricao:s.desc.trim(),
-      quantity:1,
+      quantity:s.qty||1,
       unitPrice:s.valor,
-      totalValue:s.valor,
+      totalValue:(s.qty||0)*(s.valor||0),
       manualValue:true,
       nfNumber:pedido,
       client:cliente, pedido, project:projeto, collaborator:colab, obs
@@ -4370,7 +4378,7 @@ function coletarSaidasPorProjeto(query,from,to){
       unitTotal=unitPrice*(rec.quantity||0);
     }
     out.push({id:rec.id,date:rec.date,type:rec.type,module,moduleLabel,code,name,quantity:rec.quantity||0,unitPrice,totalValue:unitTotal,
-      project:rec.project||'',pedido:rec.pedido||rec.nfNumber||'',collaborator:rec.collaborator||rec.client||''});
+      tipo:rec.tipo||'',project:rec.project||'',pedido:rec.pedido||rec.nfNumber||'',collaborator:rec.collaborator||rec.client||''});
   }
   DB.getMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('geral','Estoque Geral',m));
   DBX.getEPIMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('epi','EPI',m));
@@ -4378,7 +4386,7 @@ function coletarSaidasPorProjeto(query,from,to){
   DBX.getEscMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('esc','Material de Escritório',m));
   DBX.getLimpMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('limp','Material de Limpeza',m));
   DBX.getPerfilMovs().filter(m=>m.type==='Saída'||m.type==='Entrada').forEach(m=>addRec('perfil','Perfis de Alumínio',m));
-  DBSERV.getMovs().forEach(m=>addRec('servico','🛠️ Mão de Obra / Serviço',m));
+  DBSERV.getMovs().forEach(m=>addRec('servico',m.tipo==='material'?'📦 Material sem Estoque':'🛠️ Mão de Obra / Serviço',m));
   out.sort((a,b)=>(a.date||'').localeCompare(b.date||''));
   return out;
 }
@@ -4660,15 +4668,17 @@ function exportarNotasFiscaisCSV(){
 //   Receita        = Valor do Contrato/Venda (digitado manualmente)
 //   Custo Material = soma automática das saídas de estoque (todos os módulos)
 //                    lançadas para o projeto na Saída por Projeto
-//   Mão de Obra    = soma automática dos lançamentos de Mão de Obra/Serviço
+//   Mão de Obra    = soma automática dos lançamentos de Mão de Obra
 //                    para o projeto (valor digitado manualmente em cada um)
+//   Custo Material inclui também os "Itens sem Estoque" (ex: vidros) lançados
+//   na Saída, já que representam material consumido na obra, não mão de obra.
 //   Despesas Extras= lançadas manualmente aqui (frete, aluguel, taxas, etc.)
 //   Lucro          = Receita − (Custo Material + Mão de Obra + Despesas Extras)
 // ═══════════════════════════════════════════════════════════════════════════
 function calcFinanceiroProjeto(nome){
   const saidas=coletarSaidasPorProjeto(nome).filter(it=>it.type==='Saída');
-  const maoObra=saidas.filter(it=>it.module==='servico').reduce((s,it)=>s+(it.totalValue||0),0);
-  const materiais=saidas.filter(it=>it.module!=='servico').reduce((s,it)=>s+(it.totalValue||0),0);
+  const maoObra=saidas.filter(it=>it.module==='servico'&&it.tipo!=='material').reduce((s,it)=>s+(it.totalValue||0),0);
+  const materiais=saidas.filter(it=>!(it.module==='servico'&&it.tipo!=='material')).reduce((s,it)=>s+(it.totalValue||0),0);
   const fin=DBFIN.find(nome)||{valorContrato:0,despesas:[]};
   const despesas=fin.despesas||[];
   const despesasExtras=despesas.reduce((s,d)=>s+(d.valor||0),0);
