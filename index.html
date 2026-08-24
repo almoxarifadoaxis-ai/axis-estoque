@@ -896,6 +896,7 @@ function exportCatCSV(){
     <a onclick="nav('movimentacoes')"><span class="ico">📋</span><span>Histórico</span></a>
     <a onclick="nav('custos')"><span class="ico">💰</span><span>Histórico de Custos</span></a>
     <a onclick="nav('nfconsulta')"><span class="ico">🧾</span><span>Notas Fiscais</span></a>
+    <a onclick="nav('romaneio')"><span class="ico">🚚</span><span>Romaneio</span></a>
     <a onclick="nav('compras')" id="compras-nav-link"><span class="ico">🛒</span><span>Solicitação de Compras <span id="compras-badge" style="display:none;background:#C00;color:#fff;border-radius:9px;padding:1px 6px;font-size:10px;margin-left:2px">0</span></span></a>
     <div class="sep">Visão Geral</div>
     <a onclick="nav('estoque')"><span class="ico">📊</span><span>Estoque</span></a>
@@ -1221,6 +1222,48 @@ function exportCatCSV(){
           </div>
           <div class="tbl-wrap" id="pedidos-table"></div>
         </div>
+      </div>
+    </div>
+
+    <!-- ══ ROMANEIO ══════════════════════════════════════════════════ -->
+    <div id="sec-romaneio" class="section">
+      <div class="panel">
+        <div class="panel-header"><h3>🚚 Romaneio</h3></div>
+        <p style="font-size:12px;color:#777;margin:-8px 0 12px">Preencha os dados abaixo para gerar o romaneio em PDF, no mesmo formato usado para envio aos fornecedores.</p>
+        <div class="form-grid cols3">
+          <div class="fld"><label>Razão Social (Áxis)</label><input id="rom-razao"></div>
+          <div class="fld"><label>Endereço (Áxis)</label><input id="rom-endereco"></div>
+          <div class="fld"><label>Contato (Áxis)</label><select id="rom-contato"><option value="">—</option><option>André</option><option>Valmor</option></select></div>
+          <div class="fld"><label>Data do recebimento</label><input id="rom-data-receb" type="date"></div>
+          <div class="fld"><label>Fornecedor <span>*</span></label><input id="rom-fornecedor" list="dl-fornecedores"></div>
+          <div class="fld"><label>Endereço do Fornecedor</label><input id="rom-forn-endereco"></div>
+          <div class="fld"><label>Contato do Fornecedor</label><input id="rom-forn-contato"></div>
+          <div class="fld"><label>N° do Romaneio</label><input id="rom-numero"></div>
+          <div class="fld"><label>Data</label><input id="rom-data" type="date"></div>
+          <div class="fld"><label>Pedido</label><input id="rom-pedido" placeholder="Ex: MIX2"></div>
+          <div class="fld"><label>Tratamento</label><input id="rom-tratamento" placeholder="Ex: BRANCO RAL. 9003"></div>
+          <div class="fld"><label>Responsável Áxis (assinatura)</label><select id="rom-responsavel"><option value="">—</option><option>André</option><option>Valmor</option></select></div>
+        </div>
+        <hr class="divider">
+        <div class="panel-header"><h3 style="font-size:14px">Itens do Romaneio</h3>
+          <button class="btn btn-warn" onclick="addRomItem()">+ Adicionar Item</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Código <span>*</span></th><th style="width:90px">Qtde <span>*</span></th><th style="width:110px">Peso Unit.</th><th style="width:100px">T.Peso</th><th style="min-width:180px">Descrição</th><th></th></tr></thead>
+            <tbody id="rom-itens-body"></tbody>
+          </table>
+        </div>
+        <div style="text-align:right;margin-top:8px;font-weight:700" id="rom-total"></div>
+        <div class="btn-group mt16" style="flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="salvarRomaneio()">💾 Salvar Romaneio</button>
+          <button class="btn btn-success" onclick="gerarRomaneioPDF()">📄 Gerar PDF</button>
+          <button class="btn btn-outline" onclick="novoRomaneio()">🆕 Novo Romaneio</button>
+        </div>
+        <hr class="divider">
+        <div class="panel-header"><h3 style="font-size:14px">Histórico de Romaneios</h3></div>
+        <div class="search-bar"><input id="rom-search" placeholder="🔍 Buscar por nº ou fornecedor..." oninput="renderRomaneios()"></div>
+        <div class="tbl-wrap" id="rom-historico-table"></div>
       </div>
     </div>
 
@@ -2180,6 +2223,7 @@ const SUPA_MAP = {
   ax_projetos_financeiro: {table:'projetos_financeiro'},
   ax_epi_fichas:          {table:'epi_fichas'},
   ax_funcionarios:        {table:'funcionarios'},
+  ax_romaneios:           {table:'romaneios'},
 };
 // Tabelas de cadastro (permitem edição do mesmo registro depois de criado):
 // aqui fazemos upsert por app_id, cobrindo tanto itens novos quanto edições.
@@ -2187,7 +2231,7 @@ const SUPA_MAP = {
 // movimentação), onde só enviamos os itens novos.
 const SUPA_UNIQUE_TABLES = new Set(['produtos','perfis_aluminio','ferramentas','epi',
   'material_escritorio','material_limpeza','fornecedores','projetos','veiculos',
-  'veiculos_uso','compras','lixeira','catalogo','servicos','projetos_financeiro','epi_fichas','funcionarios']);
+  'veiculos_uso','compras','lixeira','catalogo','servicos','projetos_financeiro','epi_fichas','funcionarios','romaneios']);
 
 let _supaSyncedIds = {}; // table -> Set de app_id já conhecidos no Supabase
 const _origLSSetItem = localStorage.setItem.bind(localStorage);
@@ -2765,7 +2809,8 @@ const DBCOMPRAS = {
       id:uid(), orderNumber:data.orderNumber||this.proximoNumero(), date:data.date||today(),
       supplier:data.supplier||'', cnpj:data.cnpj||'', contact:data.contact||'',
       items:data.items||[], deliveryTerm:data.deliveryTerm||'', paymentCondition:data.paymentCondition||'',
-      carrier:data.carrier||'', freight:data.freight||0, responsible:data.responsible||'', obs:data.obs||'',
+      carrier:data.carrier||'', freight:data.freight||0, responsible:data.responsible||'',
+      authorizedBy:data.authorizedBy||'', purchaseChannel:data.purchaseChannel||'', mlRef:data.mlRef||'', obs:data.obs||'',
       status:'Criado', nfVinculada:'', createdAt:new Date().toISOString(),
       statusHistory:[{status:'Criado',date:new Date().toISOString(),user:data.responsible||''}]
     };
@@ -2786,13 +2831,43 @@ const DBCOMPRAS = {
   getPedido(id){ return this.getPedidos().find(p=>p.id===id); }
 };
 
+// ═══════════════════════════════════════════════════════════════════════════
+// ROMANEIO — documento de expedição/recebimento enviado a fornecedores
+// (ex: perfis de alumínio para tratamento). Não movimenta estoque, é apenas
+// um documento gerado em PDF a partir dos dados informados.
+// ═══════════════════════════════════════════════════════════════════════════
+const DBROM = {
+  get(){ return JSON.parse(localStorage.getItem('ax_romaneios')||'[]'); },
+  save(d){ localStorage.setItem('ax_romaneios',JSON.stringify(d)); },
+  proximoNumero(){
+    const list=this.get();
+    let max=7600;
+    list.forEach(r=>{ const n=parseInt(r.numero,10); if(!isNaN(n))max=Math.max(max,n); });
+    return String(max+1);
+  },
+  add(data){
+    const list=this.get();
+    const rec={id:uid(),...data,createdAt:new Date().toISOString()};
+    list.unshift(rec);
+    this.save(list);
+    return rec;
+  },
+  update(id,data){
+    const list=this.get();
+    const i=list.findIndex(r=>r.id===id);
+    if(i>=0){ list[i]={...list[i],...data}; this.save(list); }
+  },
+  remove(id){ this.save(this.get().filter(r=>r.id!==id)); },
+  getById(id){ return this.get().find(r=>r.id===id); }
+};
+
 const PAGE_TITLES={
   dashboard:'Dashboard',produtos:'Cadastro de Produtos',epi:'🦺 Controle de EPI',ferramentas:'🔧 Controle de Ferramentas',escritorio:'📋 Material de Escritório',limpeza:'🧹 Material de Limpeza',
   entrada:'Entrada por Nota Fiscal',saida:'Saída de Material',
   movimentacoes:'Histórico de Movimentações',custos:'💰 Histórico de Custos',estoque:'Posição de Estoque',
   alertas:'Alertas de Estoque',catalogo:'📚 Catálogo de Componentes',config:'Configurações',lixeira:'🗑️ Lixeira',
   compras:'🛒 Solicitação de Compras',relprojeto:'📁 Saída por Projeto',perfis:'📐 Perfis de Alumínio',projetos:'📁 Cadastro de Projetos',veiculos:'🚗 Controle de Uso de Veículos',
-  lucro:'💹 Lucro x Despesa por Projeto',nfconsulta:'🧾 Consulta de Notas Fiscais'
+  lucro:'💹 Lucro x Despesa por Projeto',nfconsulta:'🧾 Consulta de Notas Fiscais',romaneio:'🚚 Romaneio'
 };
 function refreshDatalists(){
   const fill=(id,items,codeKey,nameKey)=>{
@@ -2874,6 +2949,16 @@ function nav(page){
   if(page==='veiculos'){renderVeiculosCad();renderVeiculosHistorico();renderVeicKPIs();try{document.getElementById('veic-data').value=today();}catch(e){}}
   if(page==='lixeira'){renderLixeira();}
   if(page==='compras'){setLogoPreviews(DB.getCfg().logo||'');renderCompras();renderFornecedores();renderPedidos();}
+  if(page==='romaneio'){
+    try{
+      if(!document.getElementById('rom-razao').value)document.getElementById('rom-razao').value='ÁXIS ESQUADRIAS';
+      if(!document.getElementById('rom-endereco').value)document.getElementById('rom-endereco').value='RUA DOS IMIGRANTES, 776 PAULINIA';
+      if(!romEditId)document.getElementById('rom-numero').value=DBROM.proximoNumero();
+      if(!document.getElementById('rom-data').value)document.getElementById('rom-data').value=today();
+    }catch(e){}
+    renderRomItens();
+    renderRomaneios();
+  }
   if(page==='relprojeto'){renderRelatorioProjeto();}
   if(page==='lucro'){renderLucroDespesa();}
 }
@@ -4057,10 +4142,13 @@ function abrirModalPedido(){
     <div class="form-grid cols3">
       <div class="fld"><label>Nº do Pedido</label><input id="ped-num" value="${DBCOMPRAS.proximoNumero()}"></div>
       <div class="fld"><label>Data do Pedido</label><input id="ped-date" type="date" value="${today()}"></div>
-      <div class="fld"><label>Responsável</label><input id="ped-resp" value="${cfg.resp||''}"></div>
+      <div class="fld"><label>Responsável pela Compra</label><input id="ped-resp" value="${cfg.resp||''}"></div>
+      <div class="fld"><label>Autorizado por <span>*</span></label><select id="ped-autorizado"><option value="">—</option><option>André</option><option>Valmor</option></select></div>
       <div class="fld"><label>Fornecedor <span>*</span></label><input id="ped-supplier" list="dl-fornecedores" value="${sugSupplier||''}" onchange="pedFornChange(this.value)"></div>
       <div class="fld"><label>CNPJ</label><input id="ped-cnpj" value="${fornObj?.cnpj||''}"></div>
       <div class="fld"><label>Contato</label><input id="ped-contact" value="${fornObj?.contact||''}"></div>
+      <div class="fld"><label>Forma de Compra</label><select id="ped-canal"><option value="">—</option><option>Mercado Livre</option><option>Fornecedor da Região</option><option>Outro</option></select></div>
+      <div class="fld"><label>Link/Nº Pedido (Mercado Livre)</label><input id="ped-ml-ref" placeholder="Opcional"></div>
       <div class="fld"><label>Prazo de Entrega</label><input id="ped-prazo" placeholder="Ex: 10 dias úteis"></div>
       <div class="fld"><label>Condição de Pagamento</label><input id="ped-pagamento" placeholder="Ex: 30 dias"></div>
       <div class="fld"><label>Transportadora</label><input id="ped-transp" placeholder="Opcional"></div>
@@ -4088,9 +4176,12 @@ function coletarPedidoAtual(){
     orderNumber:(document.getElementById('ped-num')?.value||'').trim(),
     date:document.getElementById('ped-date')?.value||today(),
     responsible:(document.getElementById('ped-resp')?.value||'').trim(),
+    authorizedBy:(document.getElementById('ped-autorizado')?.value||'').trim(),
     supplier:(document.getElementById('ped-supplier')?.value||'').trim(),
     cnpj:(document.getElementById('ped-cnpj')?.value||'').trim(),
     contact:(document.getElementById('ped-contact')?.value||'').trim(),
+    purchaseChannel:(document.getElementById('ped-canal')?.value||'').trim(),
+    mlRef:(document.getElementById('ped-ml-ref')?.value||'').trim(),
     deliveryTerm:(document.getElementById('ped-prazo')?.value||'').trim(),
     paymentCondition:(document.getElementById('ped-pagamento')?.value||'').trim(),
     carrier:(document.getElementById('ped-transp')?.value||'').trim(),
@@ -4102,6 +4193,7 @@ function coletarPedidoAtual(){
 function salvarPedido(){
   const d=coletarPedidoAtual();
   if(!d.supplier){toast('Informe o fornecedor!',false);return;}
+  if(!d.authorizedBy){toast('Informe quem autorizou a compra (André ou Valmor)!',false);return;}
   if(!d.items.length){toast('Nenhum item no pedido!',false);return;}
   if(d.contact||d.cnpj)DBFORN.upsert({name:d.supplier,cnpj:d.cnpj,contact:d.contact});
   const pedido=DBCOMPRAS.addPedido(d);
@@ -4144,11 +4236,14 @@ function gerarPedidoPDF(pedidoSalvo){
   doc.setFontSize(10);
   doc.text('Prazo de Entrega: '+(d.deliveryTerm||'—'),14,finalY);finalY+=6;
   doc.text('Condição de Pagamento: '+(d.paymentCondition||'—'),14,finalY);finalY+=6;
-  doc.text('Transportadora: '+(d.carrier||'—'),14,finalY);finalY+=10;
+  doc.text('Transportadora: '+(d.carrier||'—'),14,finalY);finalY+=6;
+  doc.text('Forma de Compra: '+(d.purchaseChannel||'—')+(d.mlRef?'   |   Ref.: '+d.mlRef:''),14,finalY);finalY+=10;
   if(d.obs){doc.text('Observações: '+d.obs,14,finalY);finalY+=10;}
   finalY+=15;
   doc.text('_______________________________________',14,finalY);finalY+=6;
-  doc.text('Responsável: '+(d.responsible||''),14,finalY);
+  doc.text('Responsável pela Compra: '+(d.responsible||''),14,finalY);finalY+=8;
+  doc.text('_______________________________________',14,finalY);finalY+=6;
+  doc.text('Autorizado por: '+(d.authorizedBy||''),14,finalY);
   doc.save('pedido_compra_'+(d.orderNumber||'novo')+'.pdf');
   toast('PDF do pedido gerado!');
 }
@@ -4161,6 +4256,8 @@ function exportarPedidoExcel(pedidoSalvo){
   const totalItens=d.items.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
   rows.push([]);rows.push(['Frete','','','','',d.freight||0]);
   rows.push(['Total Geral','','','','',totalItens+(d.freight||0)]);
+  rows.push([]);rows.push(['Responsável pela Compra',d.responsible||'']);rows.push(['Autorizado por',d.authorizedBy||'']);
+  rows.push(['Forma de Compra',d.purchaseChannel||'']);rows.push(['Link/Nº Pedido (Mercado Livre)',d.mlRef||'']);
   downloadCSV(rows,'pedido_compra_'+(d.orderNumber||'novo')+'.csv');
   toast('Planilha do pedido gerada!');
 }
@@ -4168,9 +4265,9 @@ function textoPedido(d){
   let t=`PEDIDO DE COMPRA Nº ${d.orderNumber||''}\nData: ${fmtDate(d.date||today())}\nFornecedor: ${d.supplier||''} | CNPJ: ${d.cnpj||'—'} | Contato: ${d.contact||'—'}\n\nItens:\n`;
   d.items.forEach(it=>{ t+=`- [${COMPRAS_MODULO_LABELS[it.module]||it.module}] ${it.code} — ${it.name} | Qtd: ${fmtNum(it.qty)} | V.Unit: R$ ${fmtNum(it.unitPrice)} | V.Total: R$ ${fmtNum((it.qty||0)*(it.unitPrice||0))}\n`; });
   const totalItens=d.items.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0);
-  t+=`\nFrete: R$ ${fmtNum(d.freight||0)}\nTotal Geral: R$ ${fmtNum(totalItens+(d.freight||0))}\n\nPrazo de Entrega: ${d.deliveryTerm||'—'}\nCondição de Pagamento: ${d.paymentCondition||'—'}\nTransportadora: ${d.carrier||'—'}\n`;
+  t+=`\nFrete: R$ ${fmtNum(d.freight||0)}\nTotal Geral: R$ ${fmtNum(totalItens+(d.freight||0))}\n\nPrazo de Entrega: ${d.deliveryTerm||'—'}\nCondição de Pagamento: ${d.paymentCondition||'—'}\nTransportadora: ${d.carrier||'—'}\nForma de Compra: ${d.purchaseChannel||'—'}${d.mlRef?' | Ref.: '+d.mlRef:''}\n`;
   if(d.obs)t+=`Observações: ${d.obs}\n`;
-  t+=`\nResponsável: ${d.responsible||''}`;
+  t+=`\nResponsável pela Compra: ${d.responsible||''}\nAutorizado por: ${d.authorizedBy||''}`;
   return t;
 }
 function fallbackCopy(txt){
@@ -4201,9 +4298,10 @@ function imprimirPedido(pedidoSalvo){
     <table><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th></tr></thead>
     <tbody>${d.items.map(it=>`<tr><td>${COMPRAS_MODULO_LABELS[it.module]||it.module}</td><td>${it.code}</td><td>${it.name}</td><td>${fmtNum(it.qty)}</td><td>R$ ${fmtNum(it.unitPrice)}</td><td>R$ ${fmtNum((it.qty||0)*(it.unitPrice||0))}</td></tr>`).join('')}</tbody></table>
     <p style="margin-top:14px"><b>Frete:</b> R$ ${fmtNum(d.freight||0)}<br><b>Total Geral:</b> R$ ${fmtNum(d.items.reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0)+(d.freight||0))}</p>
-    <p><b>Prazo de Entrega:</b> ${d.deliveryTerm||'—'}<br><b>Condição de Pagamento:</b> ${d.paymentCondition||'—'}<br><b>Transportadora:</b> ${d.carrier||'—'}</p>
+    <p><b>Prazo de Entrega:</b> ${d.deliveryTerm||'—'}<br><b>Condição de Pagamento:</b> ${d.paymentCondition||'—'}<br><b>Transportadora:</b> ${d.carrier||'—'}<br><b>Forma de Compra:</b> ${d.purchaseChannel||'—'}${d.mlRef?' | Ref.: '+d.mlRef:''}</p>
     ${d.obs?`<p><b>Observações:</b> ${d.obs}</p>`:''}
-    <p style="margin-top:40px">_______________________________________<br>Responsável: ${d.responsible||''}</p>
+    <p style="margin-top:40px">_______________________________________<br>Responsável pela Compra: ${d.responsible||''}</p>
+    <p style="margin-top:20px">_______________________________________<br>Autorizado por: ${d.authorizedBy||''}</p>
     <script>window.print()<\/script>
     </body></html>`);
   win.document.close();
@@ -4226,11 +4324,11 @@ function renderPedidos(){
   const tbl=document.getElementById('pedidos-table');
   if(!tbl)return;
   if(!list.length){tbl.innerHTML='<div class="empty-state"><div class="ico">📑</div>Nenhum pedido de compra gerado ainda.</div>';return;}
-  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>Nº</th><th>Data</th><th>Fornecedor</th><th>Itens</th><th>Valor Total</th><th>Status</th><th>NF Vinculada</th><th>Ações</th></tr></thead>
+  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>Nº</th><th>Data</th><th>Fornecedor</th><th>Autorizado por</th><th>Itens</th><th>Valor Total</th><th>Status</th><th>NF Vinculada</th><th>Ações</th></tr></thead>
   <tbody>${list.map(p=>{
     const total=(p.items||[]).reduce((s,it)=>s+(it.qty||0)*(it.unitPrice||0),0)+(p.freight||0);
     return `<tr>
-      <td><b>${p.orderNumber}</b></td><td>${fmtDate(p.date)}</td><td>${p.supplier}</td><td>${(p.items||[]).length}</td>
+      <td><b>${p.orderNumber}</b></td><td>${fmtDate(p.date)}</td><td>${p.supplier}</td><td>${p.authorizedBy||'—'}</td><td>${(p.items||[]).length}</td>
       <td>R$ ${fmtNum(total)}</td>
       <td><select onchange="mudarStatusPedido('${p.id}',this.value)">
         ${['Criado','Enviado','Respondido','Cancelado','Concluído'].map(s=>`<option ${p.status===s?'selected':''}>${s}</option>`).join('')}
@@ -4243,6 +4341,198 @@ function renderPedidos(){
       </td>
     </tr>`;
   }).join('')}</tbody></table>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ROMANEIO — formulário + geração de PDF idêntico ao modelo usado com
+// fornecedores (ex: envio de perfis para tratamento).
+// ═══════════════════════════════════════════════════════════════════════════
+let romItens=[];
+let romEditId=null;
+function romItemRow(it,i){
+  return `<tr>
+    <td><input value="${String(it.codigo||'').replace(/"/g,'&quot;')}" onchange="romItens[${i}].codigo=this.value"></td>
+    <td><input type="number" min="0.01" step="any" value="${it.qtde||''}" onchange="romItens[${i}].qtde=parseFloat(this.value)||0;renderRomItens();"></td>
+    <td><input type="number" min="0" step="0.001" value="${it.peso||''}" onchange="romItens[${i}].peso=parseFloat(this.value)||0;renderRomItens();"></td>
+    <td style="font-weight:700;color:#375623">${fmtNum((it.qtde||0)*(it.peso||0))}</td>
+    <td><input value="${String(it.descricao||'').replace(/"/g,'&quot;')}" onchange="romItens[${i}].descricao=this.value"></td>
+    <td><button class="btn btn-danger btn-sm" onclick="removeRomItem(${i})">✕</button></td>
+  </tr>`;
+}
+function addRomItem(){ romItens.push({codigo:'',qtde:1,peso:0,descricao:''}); renderRomItens(); }
+function removeRomItem(i){ romItens.splice(i,1); renderRomItens(); }
+function renderRomItens(){
+  const tbody=document.getElementById('rom-itens-body');
+  if(!tbody)return;
+  if(!romItens.length){ tbody.innerHTML='<tr><td colspan="6" class="empty-state" style="padding:16px">Nenhum item adicionado ainda.</td></tr>'; }
+  else tbody.innerHTML=romItens.map((it,i)=>romItemRow(it,i)).join('');
+  const totalQtd=romItens.reduce((s,it)=>s+(it.qtde||0),0);
+  const totalPeso=romItens.reduce((s,it)=>s+(it.qtde||0)*(it.peso||0),0);
+  const totEl=document.getElementById('rom-total');
+  if(totEl)totEl.textContent='Total: '+fmtNum(totalQtd)+' Barras   —   '+fmtNum(totalPeso)+' kg';
+}
+function coletarRomaneioAtual(){
+  return {
+    empresaRazao:(document.getElementById('rom-razao')?.value||'').trim(),
+    empresaEndereco:(document.getElementById('rom-endereco')?.value||'').trim(),
+    empresaContato:(document.getElementById('rom-contato')?.value||'').trim(),
+    dataRecebimento:document.getElementById('rom-data-receb')?.value||'',
+    fornecedor:(document.getElementById('rom-fornecedor')?.value||'').trim(),
+    fornecedorEndereco:(document.getElementById('rom-forn-endereco')?.value||'').trim(),
+    fornecedorContato:(document.getElementById('rom-forn-contato')?.value||'').trim(),
+    numero:(document.getElementById('rom-numero')?.value||'').trim(),
+    data:document.getElementById('rom-data')?.value||today(),
+    pedido:(document.getElementById('rom-pedido')?.value||'').trim(),
+    tratamento:(document.getElementById('rom-tratamento')?.value||'').trim(),
+    responsavelAxis:(document.getElementById('rom-responsavel')?.value||'').trim(),
+    itens:romItens.slice()
+  };
+}
+function novoRomaneio(){
+  romEditId=null;
+  romItens=[];
+  const set=(id,v)=>{const el=document.getElementById(id);if(el)el.value=v;};
+  set('rom-numero',DBROM.proximoNumero());
+  set('rom-data',today());
+  set('rom-data-receb','');
+  set('rom-fornecedor','');
+  set('rom-forn-endereco','');
+  set('rom-forn-contato','');
+  set('rom-pedido','');
+  set('rom-tratamento','');
+  set('rom-responsavel','');
+  renderRomItens();
+  toast('Novo romaneio pronto para preencher.');
+}
+function salvarRomaneio(){
+  const d=coletarRomaneioAtual();
+  if(!d.numero){toast('Informe o número do romaneio!',false);return;}
+  if(!d.fornecedor){toast('Informe o fornecedor!',false);return;}
+  if(!d.itens.length){toast('Adicione ao menos um item ao romaneio!',false);return;}
+  for(let i=0;i<d.itens.length;i++){
+    const it=d.itens[i];
+    if(!it.codigo||!it.codigo.trim()){toast('Item '+(i+1)+': informe o código!',false);return;}
+    if(!it.qtde||it.qtde<=0){toast('Item '+(i+1)+': informe a quantidade!',false);return;}
+  }
+  if(romEditId){
+    DBROM.update(romEditId,d);
+    toast('Romaneio '+d.numero+' atualizado!');
+  }else{
+    const rec=DBROM.add(d);
+    romEditId=rec.id;
+    toast('Romaneio '+d.numero+' salvo!');
+  }
+  renderRomaneios();
+}
+function editarRomaneio(id){
+  const r=DBROM.getById(id);
+  if(!r)return;
+  romEditId=id;
+  romItens=(r.itens||[]).slice();
+  const set=(id2,v)=>{const el=document.getElementById(id2);if(el)el.value=v||'';};
+  set('rom-razao',r.empresaRazao||'ÁXIS ESQUADRIAS');
+  set('rom-endereco',r.empresaEndereco);
+  set('rom-contato',r.empresaContato);
+  set('rom-data-receb',r.dataRecebimento);
+  set('rom-fornecedor',r.fornecedor);
+  set('rom-forn-endereco',r.fornecedorEndereco);
+  set('rom-forn-contato',r.fornecedorContato);
+  set('rom-numero',r.numero);
+  set('rom-data',r.data||today());
+  set('rom-pedido',r.pedido);
+  set('rom-tratamento',r.tratamento);
+  set('rom-responsavel',r.responsavelAxis);
+  renderRomItens();
+  toast('Romaneio '+r.numero+' carregado para edição.');
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function excluirRomaneio(id){
+  const r=DBROM.getById(id);
+  if(!r)return;
+  if(!confirm('Excluir o romaneio '+r.numero+'?'))return;
+  DBROM.remove(id);
+  if(romEditId===id)novoRomaneio();
+  renderRomaneios();
+  toast('Romaneio excluído!');
+}
+function pdfRomaneioById(id){ const r=DBROM.getById(id); if(r)gerarRomaneioPDF(r); }
+function renderRomaneios(){
+  const q=norm(document.getElementById('rom-search')?.value||'');
+  const list=DBROM.get().filter(r=>!q||norm(r.numero).includes(q)||norm(r.fornecedor).includes(q));
+  const tbl=document.getElementById('rom-historico-table');
+  if(!tbl)return;
+  if(!list.length){tbl.innerHTML='<div class="empty-state"><div class="ico">🚚</div>Nenhum romaneio gerado ainda.</div>';return;}
+  tbl.innerHTML=`<table class="mod-table"><thead><tr><th>N°</th><th>Data</th><th>Fornecedor</th><th>Pedido</th><th>Itens</th><th>Total Peso</th><th>Ações</th></tr></thead>
+  <tbody>${list.map(r=>{
+    const totalPeso=(r.itens||[]).reduce((s,it)=>s+(it.qtde||0)*(it.peso||0),0);
+    return `<tr>
+      <td><b>${r.numero}</b></td><td>${fmtDate(r.data)}</td><td>${r.fornecedor}</td><td>${r.pedido||'—'}</td>
+      <td>${(r.itens||[]).length}</td><td>${fmtNum(totalPeso)} kg</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm btn-outline" onclick="pdfRomaneioById('${r.id}')" title="Gerar PDF">📄</button>
+        <button class="btn btn-sm btn-outline" onclick="editarRomaneio('${r.id}')" title="Editar">✎</button>
+        <button class="btn btn-sm btn-danger" onclick="excluirRomaneio('${r.id}')" title="Excluir">✕</button>
+      </td>
+    </tr>`;
+  }).join('')}</tbody></table>`;
+}
+function gerarRomaneioPDF(romSalvo){
+  const d=romSalvo||coletarRomaneioAtual();
+  if(!d.itens||!d.itens.length){toast('Adicione ao menos um item ao romaneio!',false);return;}
+  const cfg=DB.getCfg();
+  const {jsPDF}=window.jspdf;
+  const doc=new jsPDF();
+  if(cfg.logo){ try{const fmt=cfg.logo.includes('image/png')?'PNG':'JPEG';doc.addImage(cfg.logo,fmt,14,10,30,20);}catch(e){} }
+  const infoBody=[
+    ['Razão Social:', d.empresaRazao||'ÁXIS ESQUADRIAS'],
+    ['Endereço:', d.empresaEndereco||''],
+    ['Contato:', d.empresaContato||''],
+    ['Data do recebimento:', d.dataRecebimento?fmtDate(d.dataRecebimento):''],
+    ['FORNECEDOR:', d.fornecedor||''],
+    ['Endereço:', d.fornecedorEndereco||''],
+    ['Contato:', d.fornecedorContato||'']
+  ];
+  doc.autoTable({
+    startY:34, body:infoBody, theme:'grid',
+    styles:{fontSize:9,cellPadding:2,textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.1},
+    columnStyles:{0:{cellWidth:45,fontStyle:'bold'},1:{cellWidth:145}},
+    margin:{left:14,right:14},
+    didParseCell:(data)=>{ if(data.column.index===1 && data.row.index===0){ data.cell.styles.fontStyle='bold'; data.cell.styles.halign='center'; } }
+  });
+  let y=doc.lastAutoTable.finalY;
+  doc.autoTable({
+    startY:y, theme:'grid',
+    body:[
+      ['N° do Romaneio:', d.numero||'', 'DATA', d.data?fmtDate(d.data):''],
+      ['PEDIDO :', d.pedido||'', 'TRATAMENTO :', d.tratamento||'']
+    ],
+    styles:{fontSize:9,cellPadding:2,textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.1},
+    columnStyles:{0:{cellWidth:35,fontStyle:'bold'},1:{cellWidth:45},2:{cellWidth:30,fontStyle:'bold'},3:{cellWidth:80}},
+    margin:{left:14,right:14}
+  });
+  y=doc.lastAutoTable.finalY;
+  const totalQtd=d.itens.reduce((s,it)=>s+(it.qtde||0),0);
+  const totalPeso=d.itens.reduce((s,it)=>s+(it.qtde||0)*(it.peso||0),0);
+  const itemBody=d.itens.map(it=>[it.codigo||'',fmtNum(it.qtde||0),fmtNum(it.peso||0),fmtNum((it.qtde||0)*(it.peso||0)),it.descricao||'']);
+  itemBody.push(['', fmtNum(totalQtd)+' Barras', '', fmtNum(totalPeso), '']);
+  doc.autoTable({
+    startY:y, head:[['CÓDIGO','QTDE','PESO','T.PESO','']], body:itemBody, theme:'grid',
+    styles:{fontSize:9,cellPadding:2,textColor:[0,0,0],lineColor:[0,0,0],lineWidth:0.1},
+    headStyles:{fillColor:[255,255,255],textColor:[0,0,0],fontStyle:'bold',lineWidth:0.1},
+    columnStyles:{0:{cellWidth:35},1:{cellWidth:25,halign:'right'},2:{cellWidth:25,halign:'right'},3:{cellWidth:25,halign:'right'},4:{cellWidth:80,fontStyle:'bold'}},
+    margin:{left:14,right:14},
+    didParseCell:(data)=>{ if(data.row.index===itemBody.length-1){ data.cell.styles.fontStyle='bold'; } }
+  });
+  y=doc.lastAutoTable.finalY+30;
+  if(y>270){doc.addPage();y=30;}
+  doc.setFontSize(10);doc.setTextColor(0,0,0);
+  doc.text('_______________________________________',14,y);
+  doc.text('_______________________________________',110,y);
+  y+=6;
+  doc.text('Áxis Esquadrias - '+(d.responsavelAxis||''),14,y);
+  doc.text('Conferência '+(d.fornecedor||''),110,y);
+  doc.save('romaneio_'+(d.numero||'novo')+'.pdf');
+  toast('PDF do romaneio gerado!');
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
