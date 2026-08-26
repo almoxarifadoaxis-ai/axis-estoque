@@ -3893,7 +3893,7 @@ function exportCustosCSV(){
 // ═══════════════════════════════════════════════════════════════════════════
 // SOLICITAÇÃO DE COMPRAS
 // ═══════════════════════════════════════════════════════════════════════════
-const COMPRAS_MODULO_LABELS={geral:'Estoque Geral',epi:'EPI',ferr:'Ferramentas',esc:'Material de Escritório',limp:'Material de Limpeza',perfil:'Perfis de Alumínio'};
+const COMPRAS_MODULO_LABELS={geral:'Estoque Geral',epi:'EPI',ferr:'Ferramentas',esc:'Material de Escritório',limp:'Material de Limpeza',perfil:'Perfis de Alumínio',avulso:'📝 Item Avulso'};
 let comprasSelecionados=new Set();
 
 function getMovsEntradaModulo(module){
@@ -4095,6 +4095,17 @@ function removerFornecedor(id){
 // ── Geração de Pedido de Compra (modal) ─────────────────────────────────────
 let pedidoDraftItems=[];
 function pedItemRow(it,i){
+  if(it.avulso){
+    return `<tr>
+      <td>${COMPRAS_MODULO_LABELS.avulso}</td>
+      <td><input value="${String(it.code||'').replace(/"/g,'&quot;')}" placeholder="Opcional" onchange="pedidoDraftItems[${i}].code=this.value"></td>
+      <td><input value="${String(it.name||'').replace(/"/g,'&quot;')}" placeholder="Descrição do item" onchange="pedidoDraftItems[${i}].name=this.value"></td>
+      <td style="width:80px"><input type="number" min="0.01" step="any" value="${it.qty}" onchange="pedidoDraftItems[${i}].qty=parseFloat(this.value)||0;calcPedTotal()"></td>
+      <td style="width:110px"><input type="number" min="0" step="0.01" value="${it.unitPrice}" onchange="pedidoDraftItems[${i}].unitPrice=parseFloat(this.value)||0;calcPedTotal()"></td>
+      <td id="ped-tot-${i}" style="font-weight:700;color:#375623">R$ ${fmtNum((it.qty||0)*(it.unitPrice||0))}</td>
+      <td><button class="btn btn-danger btn-sm" onclick="removePedItem(${i})">✕</button></td>
+    </tr>`;
+  }
   return `<tr>
     <td>${COMPRAS_MODULO_LABELS[it.module]||it.module}</td><td>${it.code}</td><td>${it.name}</td>
     <td style="width:80px"><input type="number" min="0.01" step="any" value="${it.qty}" onchange="pedidoDraftItems[${i}].qty=parseFloat(this.value)||0;calcPedTotal()"></td>
@@ -4102,6 +4113,11 @@ function pedItemRow(it,i){
     <td id="ped-tot-${i}" style="font-weight:700;color:#375623">R$ ${fmtNum((it.qty||0)*(it.unitPrice||0))}</td>
     <td><button class="btn btn-danger btn-sm" onclick="removePedItem(${i})">✕</button></td>
   </tr>`;
+}
+function addPedItemAvulso(){
+  pedidoDraftItems.push({module:'avulso',avulso:true,code:'',name:'',qty:1,unitPrice:0});
+  document.getElementById('ped-items-body').innerHTML=pedidoDraftItems.map((it,j)=>pedItemRow(it,j)).join('');
+  calcPedTotal();
 }
 function removePedItem(i){
   pedidoDraftItems.splice(i,1);
@@ -4156,6 +4172,10 @@ function abrirModalPedido(){
     </div>
     <div class="fld"><label>Observações</label><input id="ped-obs" placeholder="Observações gerais do pedido"></div>
     <hr class="divider">
+    <div class="btn-group" style="margin-bottom:8px">
+      <button class="btn btn-outline btn-sm" onclick="addPedItemAvulso()">+ Adicionar Item Avulso (não cadastrado no sistema)</button>
+    </div>
+    <p style="font-size:11px;color:#999;margin:-4px 0 8px">Item avulso não movimenta o estoque — aparece apenas neste pedido e no PDF.</p>
     <div class="tbl-wrap"><table><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th><th></th></tr></thead>
     <tbody id="ped-items-body">${pedidoDraftItems.map((it,i)=>pedItemRow(it,i)).join('')}</tbody></table></div>
     <div style="text-align:right;margin-top:8px;font-weight:700" id="ped-total"></div>
@@ -4195,6 +4215,10 @@ function salvarPedido(){
   if(!d.supplier){toast('Informe o fornecedor!',false);return;}
   if(!d.authorizedBy){toast('Informe quem autorizou a compra (André ou Valmor)!',false);return;}
   if(!d.items.length){toast('Nenhum item no pedido!',false);return;}
+  for(let i=0;i<d.items.length;i++){
+    const it=d.items[i];
+    if(it.avulso&&(!it.name||!it.name.trim())){toast('Item avulso '+(i+1)+': informe a descrição!',false);return;}
+  }
   if(d.contact||d.cnpj)DBFORN.upsert({name:d.supplier,cnpj:d.cnpj,contact:d.contact});
   const pedido=DBCOMPRAS.addPedido(d);
   comprasSelecionados.clear();
