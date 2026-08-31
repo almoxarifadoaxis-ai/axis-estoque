@@ -4145,33 +4145,43 @@ function pedFornChange(name){
   }
 }
 function abrirModalPedido(soloAvulso){
-  if(!soloAvulso&&!comprasSelecionados.size){toast('Selecione ao menos um item para gerar o pedido!',false);return;}
+  const prev={};
+  ['ped-num','ped-date','ped-resp','ped-autorizado','ped-supplier','ped-cnpj','ped-contact','ped-canal','ped-ml-ref','ped-prazo','ped-pagamento','ped-transp','ped-frete','ped-obs'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) prev[id]=el.value;
+  });
   const all=computeSuggestions();
-  pedidoDraftItems=soloAvulso?[]:all.filter(it=>comprasSelecionados.has(comprasKey(it))).map(it=>({module:it.module,code:it.code,name:it.name,qty:it.suggestedQty,unitPrice:it.lastPrice||0,lastSupplier:it.lastSupplier}));
+  const existingKeys=new Set(pedidoDraftItems.filter(it=>!it.avulso).map(it=>it.module+'|'+it.code));
+  const novos=all.filter(it=>comprasSelecionados.has(comprasKey(it))&&!existingKeys.has(it.module+'|'+it.code)).map(it=>({module:it.module,code:it.code,name:it.name,qty:it.suggestedQty,unitPrice:it.lastPrice||0,lastSupplier:it.lastSupplier}));
+  if(!soloAvulso&&!novos.length&&!pedidoDraftItems.length){toast('Selecione ao menos um item ou adicione um item avulso!',false);return;}
+  pedidoDraftItems=pedidoDraftItems.concat(novos);
+  comprasSelecionados.clear();
+  if(typeof renderCompras==='function') renderCompras();
   const supCount={};
   pedidoDraftItems.forEach(it=>{if(it.lastSupplier){supCount[it.lastSupplier]=(supCount[it.lastSupplier]||0)+1;}});
   let sugSupplier='';let mx=0;
   Object.keys(supCount).forEach(s=>{if(supCount[s]>mx){mx=supCount[s];sugSupplier=s;}});
-  const fornObj=DBFORN.find(sugSupplier);
+  const fornObj=DBFORN.find(prev['ped-supplier']||sugSupplier);
   const cfg=DB.getCfg();
   const html=`<div class="modal" style="max-width:920px;max-height:90vh;overflow:auto">
     <h2>🛒 Novo Pedido de Compra</h2>
+    <p style="font-size:11px;color:#999;margin:-6px 0 10px">Pode continuar selecionando mais itens na tela de sugestões e clicar novamente em "Gerar Pedido" — nada do que você já preencheu ou adicionou aqui se perde.</p>
     <div class="form-grid cols3">
-      <div class="fld"><label>Nº do Pedido</label><input id="ped-num" value="${DBCOMPRAS.proximoNumero()}"></div>
-      <div class="fld"><label>Data do Pedido</label><input id="ped-date" type="date" value="${today()}"></div>
-      <div class="fld"><label>Responsável pela Compra</label><input id="ped-resp" value="${cfg.resp||''}"></div>
-      <div class="fld"><label>Autorizado por <span>*</span></label><select id="ped-autorizado"><option value="">—</option><option>André</option><option>Valmor</option></select></div>
-      <div class="fld"><label>Fornecedor <span>*</span></label><input id="ped-supplier" list="dl-fornecedores" value="${sugSupplier||''}" onchange="pedFornChange(this.value)"></div>
-      <div class="fld"><label>CNPJ</label><input id="ped-cnpj" value="${fornObj?.cnpj||''}"></div>
-      <div class="fld"><label>Contato</label><input id="ped-contact" value="${fornObj?.contact||''}"></div>
-      <div class="fld"><label>Forma de Compra</label><select id="ped-canal"><option value="">—</option><option>Mercado Livre</option><option>Fornecedor da Região</option><option>Outro</option></select></div>
-      <div class="fld"><label>Link/Nº Pedido (Mercado Livre)</label><input id="ped-ml-ref" placeholder="Opcional"></div>
-      <div class="fld"><label>Prazo de Entrega</label><input id="ped-prazo" placeholder="Ex: 10 dias úteis"></div>
-      <div class="fld"><label>Condição de Pagamento</label><input id="ped-pagamento" placeholder="Ex: 30 dias"></div>
-      <div class="fld"><label>Transportadora</label><input id="ped-transp" placeholder="Opcional"></div>
-      <div class="fld"><label>Frete (R$)</label><input id="ped-frete" type="number" min="0" step="0.01" value="0" oninput="calcPedTotal()"></div>
+      <div class="fld"><label>Nº do Pedido</label><input id="ped-num" value="${prev['ped-num']||DBCOMPRAS.proximoNumero()}"></div>
+      <div class="fld"><label>Data do Pedido</label><input id="ped-date" type="date" value="${prev['ped-date']||today()}"></div>
+      <div class="fld"><label>Responsável pela Compra</label><input id="ped-resp" value="${prev['ped-resp']!==undefined?prev['ped-resp']:(cfg.resp||'')}"></div>
+      <div class="fld"><label>Autorizado por <span>*</span></label><select id="ped-autorizado">${['','André','Valmor'].map(o=>`<option value="${o}" ${(prev['ped-autorizado']||'')===o?'selected':''}>${o||'—'}</option>`).join('')}</select></div>
+      <div class="fld"><label>Fornecedor <span>*</span></label><input id="ped-supplier" list="dl-fornecedores" value="${prev['ped-supplier']||sugSupplier||''}" onchange="pedFornChange(this.value)"></div>
+      <div class="fld"><label>CNPJ</label><input id="ped-cnpj" value="${prev['ped-cnpj']||fornObj?.cnpj||''}"></div>
+      <div class="fld"><label>Contato</label><input id="ped-contact" value="${prev['ped-contact']||fornObj?.contact||''}"></div>
+      <div class="fld"><label>Forma de Compra</label><select id="ped-canal">${['','Mercado Livre','Fornecedor da Região','Outro'].map(o=>`<option value="${o}" ${(prev['ped-canal']||'')===o?'selected':''}>${o||'—'}</option>`).join('')}</select></div>
+      <div class="fld"><label>Link/Nº Pedido (Mercado Livre)</label><input id="ped-ml-ref" placeholder="Opcional" value="${prev['ped-ml-ref']||''}"></div>
+      <div class="fld"><label>Prazo de Entrega</label><input id="ped-prazo" placeholder="Ex: 10 dias úteis" value="${prev['ped-prazo']||''}"></div>
+      <div class="fld"><label>Condição de Pagamento</label><input id="ped-pagamento" placeholder="Ex: 30 dias" value="${prev['ped-pagamento']||''}"></div>
+      <div class="fld"><label>Transportadora</label><input id="ped-transp" placeholder="Opcional" value="${prev['ped-transp']||''}"></div>
+      <div class="fld"><label>Frete (R$)</label><input id="ped-frete" type="number" min="0" step="0.01" value="${prev['ped-frete']||0}" oninput="calcPedTotal()"></div>
     </div>
-    <div class="fld"><label>Observações</label><input id="ped-obs" placeholder="Observações gerais do pedido"></div>
+    <div class="fld"><label>Observações</label><input id="ped-obs" placeholder="Observações gerais do pedido" value="${prev['ped-obs']||''}"></div>
     <hr class="divider">
     <div class="btn-group" style="margin-bottom:8px">
       <button class="btn btn-outline btn-sm" onclick="addPedItemAvulso()">+ Adicionar Item Avulso (não cadastrado no sistema)</button>
@@ -4186,12 +4196,18 @@ function abrirModalPedido(soloAvulso){
       <button class="btn btn-outline" onclick="exportarPedidoExcel()">⬇ Exportar Excel (CSV)</button>
       <button class="btn btn-outline" onclick="imprimirPedido()">🖨 Imprimir</button>
       <button class="btn btn-outline" onclick="copiarTextoPedido()">📋 Copiar Texto</button>
-      <button class="btn btn-outline" onclick="closeGenModal()">Cancelar</button>
+      <button class="btn btn-outline" onclick="cancelarNovoPedido()">Cancelar</button>
     </div>
   </div>`;
   showGenModal(html);
   calcPedTotal();
   if(soloAvulso) addPedItemAvulso();
+}
+function cancelarNovoPedido(){
+  pedidoDraftItems=[];
+  comprasSelecionados.clear();
+  if(typeof renderCompras==='function') renderCompras();
+  closeGenModal();
 }
 function coletarPedidoAtual(){
   return {
@@ -4224,6 +4240,7 @@ function salvarPedido(){
   if(d.contact||d.cnpj)DBFORN.upsert({name:d.supplier,cnpj:d.cnpj,contact:d.contact});
   const pedido=DBCOMPRAS.addPedido(d);
   comprasSelecionados.clear();
+  pedidoDraftItems=[];
   closeGenModal();
   renderPedidos();renderCompras();renderFornecedores();
   toast('Pedido '+pedido.orderNumber+' salvo! Status: Criado.');
