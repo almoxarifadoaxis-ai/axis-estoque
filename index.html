@@ -1188,6 +1188,7 @@ function exportCatCSV(){
             <button class="btn btn-sm btn-outline" onclick="comprasSelecionar(50)">50 mais urgentes</button>
             <button class="btn btn-sm btn-outline" onclick="comprasSelecionar('todos')">Todos</button>
             <button class="btn btn-sm btn-outline" onclick="comprasSelecionar('nenhum')">Nenhum</button>
+            <button class="btn btn-sm btn-outline" onclick="abrirModalPedido(true)">📝 Item Avulso</button>
             <div style="flex:1"></div>
             <button class="btn btn-primary" onclick="abrirModalPedido()">🛒 Gerar Pedido com Selecionados</button>
           </div>
@@ -4143,10 +4144,10 @@ function pedFornChange(name){
     const contEl=document.getElementById('ped-contact');if(contEl)contEl.value=f.contact||'';
   }
 }
-function abrirModalPedido(){
-  if(!comprasSelecionados.size){toast('Selecione ao menos um item para gerar o pedido!',false);return;}
+function abrirModalPedido(soloAvulso){
+  if(!soloAvulso&&!comprasSelecionados.size){toast('Selecione ao menos um item para gerar o pedido!',false);return;}
   const all=computeSuggestions();
-  pedidoDraftItems=all.filter(it=>comprasSelecionados.has(comprasKey(it))).map(it=>({module:it.module,code:it.code,name:it.name,qty:it.suggestedQty,unitPrice:it.lastPrice||0,lastSupplier:it.lastSupplier}));
+  pedidoDraftItems=soloAvulso?[]:all.filter(it=>comprasSelecionados.has(comprasKey(it))).map(it=>({module:it.module,code:it.code,name:it.name,qty:it.suggestedQty,unitPrice:it.lastPrice||0,lastSupplier:it.lastSupplier}));
   const supCount={};
   pedidoDraftItems.forEach(it=>{if(it.lastSupplier){supCount[it.lastSupplier]=(supCount[it.lastSupplier]||0)+1;}});
   let sugSupplier='';let mx=0;
@@ -4190,6 +4191,7 @@ function abrirModalPedido(){
   </div>`;
   showGenModal(html);
   calcPedTotal();
+  if(soloAvulso) addPedItemAvulso();
 }
 function coletarPedidoAtual(){
   return {
