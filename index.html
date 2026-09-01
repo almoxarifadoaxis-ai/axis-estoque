@@ -4074,7 +4074,17 @@ function renderCompras(){
   const badge=document.getElementById('compras-badge');
   if(badge){ const total=sem+crit+min; if(total>0){badge.style.display='inline-block';badge.textContent=total;} else badge.style.display='none'; }
   const tbl=document.getElementById('compras-table');
-  if(!list.length){tbl.innerHTML='<div class="empty-state"><div class="ico">🎉</div>Nenhum item precisando de compra no momento.</div>';return;}
+  if(!list.length){
+    const q=(document.getElementById('compras-search')?.value||'').trim();
+    if(q){
+      const qEsc=q.replace(/</g,'&lt;');
+      const qJs=q.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      tbl.innerHTML='<div class="empty-state"><div class="ico">🔍</div>Nenhum item em falta encontrado para "'+qEsc+'".<br>Esse item pode estar com o estoque normal (por isso não aparece nas sugestões).<div class="btn-group" style="justify-content:center;margin-top:10px"><button class="btn btn-primary btn-sm" onclick="abrirModalPedidoComBusca(\''+qJs+'\')">Buscar no cadastro completo</button></div></div>';
+    } else {
+      tbl.innerHTML='<div class="empty-state"><div class="ico">🎉</div>Nenhum item precisando de compra no momento.</div>';
+    }
+    return;
+  }
   tbl.innerHTML=`<table class="mod-table"><thead><tr>
     <th></th><th>Situação</th><th>Módulo</th><th>Código</th><th>Descrição</th><th>Categoria</th>
     <th>Estoque</th><th>Mínimo</th><th>Qtd Sugerida</th><th>Último Fornecedor</th><th>Último Preço</th><th>Última Compra</th><th>Dias</th>
@@ -4251,7 +4261,7 @@ function pedFornChange(name){
     const contEl=document.getElementById('ped-contact');if(contEl)contEl.value=f.contact||'';
   }
 }
-function abrirModalPedido(soloAvulso){
+function abrirModalPedido(soloAvulso, semAvulsoAuto){
   const prev={};
   ['ped-num','ped-date','ped-resp','ped-autorizado','ped-supplier','ped-cnpj','ped-contact','ped-canal','ped-ml-ref','ped-prazo','ped-pagamento','ped-transp','ped-frete','ped-obs'].forEach(id=>{
     const el=document.getElementById(id);
@@ -4317,7 +4327,14 @@ function abrirModalPedido(soloAvulso){
   </div>`;
   showGenModal(html);
   calcPedTotal();
-  if(soloAvulso) addPedItemAvulso();
+  if(soloAvulso && !semAvulsoAuto) addPedItemAvulso();
+}
+function abrirModalPedidoComBusca(q){
+  abrirModalPedido(true, true);
+  setTimeout(()=>{
+    const inp = document.getElementById('ped-busca-cadastro');
+    if(inp){ inp.value = q; buscarPedItemCadastro(); }
+  }, 60);
 }
 function cancelarNovoPedido(){
   pedidoDraftItems=[];
