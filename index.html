@@ -4190,6 +4190,43 @@ function addPedItemAvulso(){
   document.getElementById('ped-items-body').innerHTML=pedidoDraftItems.map((it,j)=>pedItemRow(it,j)).join('');
   calcPedTotal();
 }
+function pedCatalogoTodos(){
+  const cats=[];
+  try{ DB.getProds().forEach(p=>cats.push({module:'geral',code:p.code,name:p.name})); }catch(e){}
+  try{ DBX.getEPICad().forEach(p=>cats.push({module:'epi',code:p.code,name:p.name})); }catch(e){}
+  try{ DBX.getFerrCad().forEach(p=>cats.push({module:'ferr',code:p.code,name:p.name})); }catch(e){}
+  try{ DBX.getEscCad().forEach(p=>cats.push({module:'esc',code:p.code,name:p.name})); }catch(e){}
+  try{ DBX.getLimpCad().forEach(p=>cats.push({module:'limp',code:p.code,name:p.name})); }catch(e){}
+  try{ DBX.getPerfilCad().forEach(p=>cats.push({module:'perfil',code:p.code,name:p.name})); }catch(e){}
+  return cats;
+}
+function pedBuscaCadastroOptions(){
+  return pedCatalogoTodos().map(it=>{
+    const label = String(it.code)+' — '+String(it.name);
+    return '<option value="'+label.replace(/"/g,'&quot;')+'">';
+  }).join('');
+}
+function buscarPedItemCadastro(){
+  const inp = document.getElementById('ped-busca-cadastro');
+  const raw = (inp.value||'').trim();
+  if(!raw){ toast('Digite ou selecione um item da lista!', false); return; }
+  const codePart = raw.split(' — ')[0].trim();
+  const all = pedCatalogoTodos();
+  let found = all.find(it=>String(it.code).toLowerCase()===codePart.toLowerCase());
+  if(!found) found = all.find(it=>String(it.name).toLowerCase()===raw.toLowerCase());
+  if(!found) found = all.find(it=>String(it.name).toLowerCase().includes(raw.toLowerCase()) || String(it.code).toLowerCase().includes(raw.toLowerCase()));
+  if(!found){
+    toast('Item não encontrado no cadastro. Se ele realmente não existe no sistema, use "+ Adicionar Item Avulso".', false);
+    return;
+  }
+  const already = pedidoDraftItems.some(it=>!it.avulso && it.module===found.module && it.code===found.code);
+  if(already){ toast('Este item já está no pedido!', false); return; }
+  pedidoDraftItems.push({module:found.module, code:found.code, name:found.name, qty:1, unitPrice:0});
+  document.getElementById('ped-items-body').innerHTML = pedidoDraftItems.map((it,j)=>pedItemRow(it,j)).join('');
+  calcPedTotal();
+  inp.value='';
+  toast('Item adicionado ao pedido! Ajuste a quantidade e o valor.');
+}
 function removePedItem(i){
   pedidoDraftItems.splice(i,1);
   document.getElementById('ped-items-body').innerHTML=pedidoDraftItems.map((it,j)=>pedItemRow(it,j)).join('');
@@ -4257,6 +4294,15 @@ function abrirModalPedido(soloAvulso){
       <button class="btn btn-outline btn-sm" onclick="addPedItemAvulso()">+ Adicionar Item Avulso (não cadastrado no sistema)</button>
     </div>
     <p style="font-size:11px;color:#999;margin:-4px 0 8px">Item avulso não movimenta o estoque — aparece apenas neste pedido e no PDF.</p>
+      <div class="fld" style="display:flex;gap:8px;align-items:flex-end;margin-bottom:8px">
+        <div style="flex:1">
+          <label>🔍 Buscar item já cadastrado (qualquer módulo)</label>
+          <input id="ped-busca-cadastro" list="dl-ped-busca-cadastro" placeholder="Digite o código ou nome do item..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarPedItemCadastro();}">
+          <datalist id="dl-ped-busca-cadastro">${pedBuscaCadastroOptions()}</datalist>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="buscarPedItemCadastro()">Adicionar</button>
+      </div>
+      <p style="font-size:11px;color:#999;margin:-4px 0 8px">Encontra itens do Cadastro de Produtos, EPI, Ferramentas, Material de Escritório/Limpeza e Perfis — mesmo que não estejam na lista de sugestões.</p>
     <div class="tbl-wrap"><table><thead><tr><th>Módulo</th><th>Código</th><th>Descrição</th><th>Qtd</th><th>V.Unit</th><th>V.Total</th><th></th></tr></thead>
     <tbody id="ped-items-body">${pedidoDraftItems.map((it,i)=>pedItemRow(it,i)).join('')}</tbody></table></div>
     <div style="text-align:right;margin-top:8px;font-weight:700" id="ped-total"></div>
